@@ -1,0 +1,36 @@
+{
+  "verified_at": "2026-06-28",
+  "sources": [
+    "https://ai.google.dev/gemini-api/docs/pricing",
+    "https://cloud.google.com/text-to-speech/pricing"
+  ],
+  "models": {
+    "script_model": {
+      "id": "gemini-2.5-flash",
+      "input_usd_per_1m_tokens": 1.5,
+      "output_usd_per_1m_tokens": 9.0
+    },
+    "veo_model": {
+      "id": "veo-3.1-lite-generate-001",
+      "usd_per_second": {
+        "720p": 0.05,
+        "1080p": 0.08
+      }
+    },
+    "thumbnail_model": {
+      "id": "gemini-2.5-flash-image",
+      "usd_per_1k_image": 0.067,
+      "legacy_imagen_fast_id": "imagen-4.0-fast-generate-001",
+      "legacy_imagen_fast_usd_per_image": 0.02
+    },
+    "tts_studio": {
+      "usd_per_1m_characters": 160.0,
+      "free_tier_characters_per_month": 100000
+    }
+  },
+  "notes": [
+    "Imagen 4 models are deprecated (shutdown Aug 17, 2026); default thumbnail path uses gemini-3.1-flash-image.",
+    "Veo billing is per generated second; failed generations should not be charged per Google docs.",
+    "Re-run scripts/verify_pricing.py before production runs if pricing page changes."
+  ]
+}

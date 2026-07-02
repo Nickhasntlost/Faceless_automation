@@ -1,0 +1,23 @@
+{
+  "scene_count_min": 5,
+  "scene_count_max": 6,
+  "clip_duration_seconds": 8,
+  "video_resolution": "720p",
+  "aspect_ratio": "9:16",
+  "budget_threshold_usd": 250.0,
+  "total_credit_usd": 300.0,
+  "budget_buffer_usd": 50.0,
+  "budget_store_path": "data/budget_counter.json",
+  "output_dir": "output",
+  "upload_privacy_status": "private",
+  "youtube_category_id": "28",
+  "tts_voice_name": "en-US-Neural2-F",
+  "tts_language_code": "en-US",
+  "api_timeout_seconds": 120,
+  "veo_poll_interval_seconds": 10,
+  "veo_max_poll_seconds": 600,
+  "retry_backoff_seconds": 5,
+  "thumbnail_enabled": true,
+  "thumbnail_model": "gemini-2.5-flash-image",
+  "mock_mode": false
+}
