@@ -18,9 +18,19 @@ def _tokenize_words(text: str) -> list[str]:
     return re.findall(r"\b[\w']+\b", text)
 
 
-def _build_ssml(words: list[str]) -> str:
+def _build_ssml(words: list[str], scene_boundaries: list[int] | None = None) -> str:
+    """Build SSML with <mark> tags for each word and <break> tags at scene boundaries.
+    
+    Args:
+        words: List of words to speak.
+        scene_boundaries: List of word indices where a new scene starts.
+            A <break> tag is inserted before these words.
+    """
+    boundaries = set(scene_boundaries or [])
     parts = ["<speak>"]
     for idx, word in enumerate(words):
+        if idx in boundaries and idx > 0:
+            parts.append('<break time="600ms"/>')
         escaped = xml.sax.saxutils.escape(word)
         parts.append(f'<mark name="w{idx}"/>{escaped}')
         if idx != len(words) - 1:
@@ -70,6 +80,23 @@ def _mock_voice(script: ScriptPackage, audio_path: Path, timing_path: Path) -> V
     words = _tokenize_words(script.full_narration)
     timings: list[WordTiming] = []
     cursor = 0.0
+    
+    # Build a set of sentence-ending word indices for natural pauses
+    sentence_end_indices: set[int] = set()
+    raw_text = script.full_narration
+    char_idx = 0
+    for word_idx, word in enumerate(words):
+        pos = raw_text.find(word, char_idx)
+        if pos == -1:
+            char_idx += len(word)
+            continue
+        end_pos = pos + len(word)
+        # Check if there's a sentence-ending punctuation right after this word
+        rest = raw_text[end_pos:end_pos + 3].lstrip()
+        if rest and rest[0] in '.!?':
+            sentence_end_indices.add(word_idx)
+        char_idx = end_pos
+    
     for idx, word in enumerate(words):
         duration = max(0.18, min(0.45, len(word) * 0.04))
         timings.append(
@@ -80,7 +107,13 @@ def _mock_voice(script: ScriptPackage, audio_path: Path, timing_path: Path) -> V
                 mark_name=f"w{idx}",
             )
         )
-        cursor += duration + 0.05
+        cursor += duration
+        # Add a longer gap after sentence boundaries, short gap otherwise
+        if idx in sentence_end_indices:
+            cursor += 0.45  # Natural sentence pause
+        else:
+            cursor += 0.05  # Normal inter-word gap
+    
     audio_path.parent.mkdir(parents=True, exist_ok=True)
     audio_path.write_bytes(b"MOCK_MP3")
     write_json(
@@ -108,6 +141,7 @@ def synthesize_voice(
     audio_path: Path,
     timing_path: Path,
     mock: bool = False,
+    scene_boundaries: list[int] | None = None,
 ) -> VoiceResult:
     words = _tokenize_words(script.full_narration)
     if not words:
@@ -117,7 +151,7 @@ def synthesize_voice(
         logger.warning("Voice pipeline running in mock mode")
         return _mock_voice(script, audio_path, timing_path)
 
-    ssml = _build_ssml(words)
+    ssml = _build_ssml(words, scene_boundaries=scene_boundaries)
     character_count = len(ssml)
     projected_cost = budget.estimate_tts_cost(character_count)
     budget.assert_can_spend(projected_cost, "cloud_tts_studio")

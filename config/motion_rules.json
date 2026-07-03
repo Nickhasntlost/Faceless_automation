@@ -1,0 +1,75 @@
+{
+  "motions": {
+    "zoom_in": {
+      "name": "zoom_in",
+      "description": "slow animated zoom into subject",
+      "prompt_text": "smooth animated zoom in",
+      "energy": "low",
+      "use_for": ["hook", "reveal", "focus"],
+      "beats": ["hook", "proof"]
+    },
+    "zoom_out": {
+      "name": "zoom_out",
+      "description": "pull back to reveal context",
+      "prompt_text": "smooth zoom out revealing full scene",
+      "energy": "medium",
+      "use_for": ["reveal", "context", "scale"],
+      "beats": ["surprise", "payoff"]
+    },
+    "bounce": {
+      "name": "bounce",
+      "description": "bouncy entrance animation",
+      "prompt_text": "bouncy pop-in animation with overshoot",
+      "energy": "high",
+      "use_for": ["entrance", "emphasis", "energy"],
+      "beats": ["surprise", "tension"]
+    },
+    "pop": {
+      "name": "pop",
+      "description": "sudden scale-up appearance",
+      "prompt_text": "sudden pop-in scale animation",
+      "energy": "high",
+      "use_for": ["stat reveal", "surprise", "impact"],
+      "beats": ["surprise", "proof"]
+    },
+    "slide": {
+      "name": "slide",
+      "description": "smooth horizontal slide transition",
+      "prompt_text": "smooth slide transition from left",
+      "energy": "medium",
+      "use_for": ["comparison", "sequence", "timeline"],
+      "beats": ["tension", "proof"]
+    },
+    "shake": {
+      "name": "shake",
+      "description": "dynamic energetic shake for impact",
+      "prompt_text": "quick dynamic shake impact effect",
+      "energy": "high",
+      "use_for": ["impact", "alarm", "shock"],
+      "beats": ["surprise", "tension"]
+    },
+    "parallax": {
+      "name": "parallax",
+      "description": "layered depth movement",
+      "prompt_text": "parallax depth movement with layered elements",
+      "energy": "medium",
+      "use_for": ["atmosphere", "depth", "immersion"],
+      "beats": ["hook", "payoff"]
+    },
+    "static_wide": {
+      "name": "static_wide",
+      "description": "static wide establishing shot",
+      "prompt_text": "static wide shot",
+      "energy": "low",
+      "use_for": ["establishing", "context", "breathing room"],
+      "beats": ["payoff", "loop"]
+    }
+  },
+  "rules": [
+    "Never repeat the same motion in consecutive scenes",
+    "Hook scene must use zoom_in or shake",
+    "Surprise scene must use pop, bounce, or shake",
+    "Payoff scene must use zoom_out or static_wide",
+    "Energy should escalate from scene 1 to scene 4, then resolve in scene 5-6"
+  ]
+}

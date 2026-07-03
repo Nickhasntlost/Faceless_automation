@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from src.models import PipelineConfig, PricingConfig, ScriptPackage
+from src.builders.visual_prompt_builder import build_veo_prompt
+from src.models import CharacterBible, MotionRules, PipelineConfig, PlannedScene, PricingConfig, ScriptPackage, StyleGuide
 from src.module3_budget_guard import BudgetGuard
 from src.utils.api_client import retry_once, with_timeout
 
@@ -69,6 +70,9 @@ def generate_thumbnail(
     pricing: PricingConfig,
     budget: BudgetGuard,
     output_path: Path,
+    style_guide: StyleGuide,
+    char_bible: CharacterBible,
+    motion_rules: MotionRules,
     mock: bool = False,
 ) -> tuple[Path | None, str | None, bool]:
     if not pipeline_config.thumbnail_enabled:
@@ -87,13 +91,36 @@ def generate_thumbnail(
         budget.record_spend(projected, label, metadata={"mock": True})
         return path, None, False
 
+    # We need a dummy scene to generate a prompt for the thumbnail
+    dummy_scene = PlannedScene(
+        index=0,
+        narration="",
+        purpose="thumbnail",
+        emotion="excited",
+        character="robot",  # default character
+        expression="excited",
+        action="looking at camera",
+        background="solid or gradient",
+        motion="static_wide",
+        camera="static wide shot",
+        transition="",
+        sfx="",
+        duration=0,
+        emotional_beat="",
+        retention_trigger=""
+    )
+    if script.scenes and hasattr(script, "planned_scenes") and script.planned_scenes:
+        first_scene = script.planned_scenes[0]
+        dummy_scene.character = first_scene.character
+        dummy_scene.background = first_scene.background
+
+    base_prompt = build_veo_prompt(dummy_scene, style_guide, char_bible, motion_rules)
+    
     prompt = (
-        f"Flat 2D animation style thumbnail, The Infographics Show aesthetic, "
-        f"bold black outlines, limited vibrant color palette, "
-        f"vertical 9:16 format, no text overlays, no captions. "
+        f"{base_prompt}. "
         f"Topic: {script.title}. "
-        f"Clean motion graphics look, high contrast, eye-catching composition. "
-        f"| negative: photorealistic, live action, stock photo, watermarks, text"
+        f"Aspect ratio: 16:9 horizontal format. "
+        f"High contrast, eye-catching composition. "
     )
 
     @retry_once(label, backoff_seconds=15.0)

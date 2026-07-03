@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.models import ChannelIdentity, PipelineConfig, PricingConfig
+from src.models import (
+    ChannelIdentity,
+    CharacterBible,
+    CharacterProfile,
+    MotionPreset,
+    MotionRules,
+    PipelineConfig,
+    PricingConfig,
+    StyleGuide,
+    RhythmConfig,
+    RhythmBeatConfig,
+    VisualDiversityRules,
+)
 from src.utils.encoding import read_json
 
 
@@ -59,3 +71,51 @@ def load_channel_identity(root: Path) -> ChannelIdentity:
         banned_topics=data.get("banned_topics", DEFAULT_CHANNEL_IDENTITY.banned_topics),
         default_hashtags=data.get("default_hashtags", DEFAULT_CHANNEL_IDENTITY.default_hashtags),
     )
+
+
+def load_style_guide(root: Path) -> StyleGuide:
+    data = read_json(root / "config" / "style_guide.json")
+    return StyleGuide(**data)
+
+
+def load_character_bible(root: Path) -> CharacterBible:
+    data = read_json(root / "config" / "character_bible.json")
+    characters = {
+        k: CharacterProfile(**v)
+        for k, v in data.get("characters", {}).items()
+    }
+    return CharacterBible(
+        characters=characters,
+        selection_rules=data.get("selection_rules", []),
+        topic_mapping=data.get("topic_mapping", {})
+    )
+
+
+def load_motion_rules(root: Path) -> MotionRules:
+    data = read_json(root / "config" / "motion_rules.json")
+    motions = {
+        k: MotionPreset(**v)
+        for k, v in data.get("motions", {}).items()
+    }
+    return MotionRules(
+        motions=motions,
+        rules=data.get("rules", [])
+    )
+
+
+def load_rhythm_config(root: Path) -> RhythmConfig:
+    data = read_json(root / "config" / "rhythm_templates.json")
+    beats = {
+        k: RhythmBeatConfig(**v)
+        for k, v in data.get("beats", {}).items()
+    }
+    return RhythmConfig(
+        beats=beats,
+        templates=data.get("templates", {})
+    )
+
+
+def load_visual_diversity_rules(root: Path) -> VisualDiversityRules:
+    data = read_json(root / "config" / "visual_diversity_rules.json")
+    return VisualDiversityRules(**data)
+

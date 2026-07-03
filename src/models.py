@@ -90,6 +90,22 @@ class ChannelIdentity:
 
 
 @dataclass
+class PausePoint:  # DEPRECATED: use RhythmBeat instead
+    after_phrase: str
+    duration: float
+    type: str
+    visual_action: str
+    sfx: str
+
+
+@dataclass
+class RhythmBeat:
+    name: str
+    speech_target: float
+    silence_target: float
+
+
+@dataclass
 class Scene:
     index: int
     narration: str
@@ -110,6 +126,7 @@ class ScriptPackage:
     color_palette: str = ""
     estimated_script_tokens: int = 0
     validation_warnings: list[str] = field(default_factory=list)
+    planned_scenes: list[PlannedScene] = field(default_factory=list)
 
 
 @dataclass
@@ -154,6 +171,8 @@ class QualityReport:
     fatal_error: str | None = None
     incomplete: bool = False
     completed_stages: list[str] = field(default_factory=list)
+    engagement_scores: dict[str, float] = field(default_factory=dict)
+    score_explanations: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -166,4 +185,167 @@ class QualityReport:
             "fatal_error": self.fatal_error,
             "incomplete": self.incomplete,
             "completed_stages": self.completed_stages,
+            "engagement_scores": self.engagement_scores,
+            "score_explanations": self.score_explanations,
         }
+
+
+@dataclass
+class StyleGuide:
+    art_style: str
+    palette: str
+    lighting: str
+    background_rules: str
+    animation_rules: str
+    character_rules: str
+    aspect_ratio: str
+    resolution: str
+    negative_prompts: list[str]
+
+
+@dataclass
+class CharacterProfile:
+    name: str
+    description: str
+    colors: list[str]
+    expressions: list[str]
+    poses: list[str]
+    accessories: list[str]
+    use_when: list[str]
+
+
+@dataclass
+class CharacterBible:
+    characters: dict[str, CharacterProfile]
+    selection_rules: list[str]
+    topic_mapping: dict[str, list[str]] = field(default_factory=dict)
+
+
+@dataclass
+class MotionPreset:
+    name: str
+    description: str
+    prompt_text: str
+    energy: str
+    use_for: list[str]
+    beats: list[str]
+
+
+@dataclass
+class MotionRules:
+    motions: dict[str, MotionPreset]
+    rules: list[str]
+
+
+@dataclass
+class RhythmBeatConfig:
+    speech: float
+    silence: float
+
+
+@dataclass
+class RhythmConfig:
+    beats: dict[str, RhythmBeatConfig]
+    templates: dict[str, list[str]]
+
+
+@dataclass
+class CreativePlan:
+    topic: str
+    story_template: str
+    viral_angle: str
+    curiosity_gap: str
+    hook: str
+    hook_style: str
+    core_message: str
+    emotional_arc: list[str]
+    emotion_timeline: list[str]
+    target_audience: str
+    ending_type: str
+    cta_style: str
+    visual_identity: str
+    scene_count: int
+    style_id: str
+
+
+@dataclass
+class VisualDiversityRules:
+    camera: dict[str, Any]
+    background: dict[str, Any]
+    motion: dict[str, Any]
+    composition: dict[str, Any]
+    expressions: dict[str, Any]
+
+
+@dataclass
+class RetentionPlan:
+    surprise_at: list[int]
+    speed_up_at: list[int]
+    zoom_at: list[int]
+    new_object_at: list[int]
+    energy_curve: list[str]
+    retention_hooks: dict[int, str]
+    scene_pauses: list[float]  # DEPRECATED
+    rhythm_template: str = "default"
+
+
+@dataclass
+class StoryboardItem:
+    scene_index: int
+    purpose: str
+    narration_goal: str
+    visual_goal: str
+    transition_goal: str
+    hook_intensity: str
+    curiosity_level: str
+    energy_level: str
+    scene_type: str
+    retention_trigger: str
+    emotional_beat: str
+    pause_duration: float  # DEPRECATED
+    rhythm_template: str = "default"
+
+
+@dataclass
+class Storyboard:
+    items: list[StoryboardItem]
+    creative_plan: CreativePlan
+    retention_plan: RetentionPlan
+
+
+@dataclass
+class PlannedScene:
+    index: int
+    narration: str
+    purpose: str
+    emotion: str
+    character: str
+    expression: str
+    action: str
+    background: str
+    motion: str
+    camera: str
+    transition: str
+    sfx: str
+    duration: int
+    emotional_beat: str
+    retention_trigger: str
+    pause_points: list[PausePoint] = field(default_factory=list)  # DEPRECATED
+    rhythm_plan: list[RhythmBeat] = field(default_factory=list)
+    speech_ratio: float = 0.0
+    visual_ratio: float = 0.0
+    visual_focus: str = ""  # e.g. "character_closeup", "environment", "data_visualization"
+
+    def __post_init__(self):
+        # Migration layer: If legacy data provides pause_points but no rhythm_plan, map it
+        if self.pause_points and not self.rhythm_plan:
+            # We'll map them generically. In practice you might want to split them logically.
+            for p in self.pause_points:
+                self.rhythm_plan.append(
+                    RhythmBeat(
+                        name=f"LEGACY_{p.type.upper()}",
+                        speech_target=1.0, 
+                        silence_target=p.duration
+                    )
+                )
+        # If rhythm_plan exists, we just ignore pause_points

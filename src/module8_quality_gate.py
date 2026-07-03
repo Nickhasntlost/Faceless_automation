@@ -18,9 +18,16 @@ class QualityGate:
         self.fatal_error: str | None = None
         self.incomplete = False
         self.completed_stages: set[str] = set()
+        self.engagement_scores: dict[str, float] = {}
+        self.score_explanations: dict[str, str] = {}
 
     def record_cost(self, label: str, amount: float) -> None:
         self.cost_breakdown[label] = round(self.cost_breakdown.get(label, 0.0) + amount, 6)
+
+    def set_engagement_score(self, dimension: str, score: float, explanation: str = "") -> None:
+        self.engagement_scores[dimension] = score
+        if explanation:
+            self.score_explanations[dimension] = explanation
 
     def note(self, message: str) -> None:
         self.notes.append(message)
@@ -61,6 +68,8 @@ class QualityGate:
             fatal_error=self.fatal_error,
             incomplete=self.incomplete,
             completed_stages=list(self.completed_stages),
+            engagement_scores=dict(self.engagement_scores),
+            score_explanations=dict(self.score_explanations),
         )
         return report
 

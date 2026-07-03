@@ -1,0 +1,17 @@
+{
+  "camera": {
+    "max_consecutive": 1
+  },
+  "background": {
+    "max_repeat": 2
+  },
+  "motion": {
+    "max_consecutive": 1
+  },
+  "composition": {
+    "prefer_unused": true
+  },
+  "expressions": {
+    "prefer_unused": true
+  }
+}

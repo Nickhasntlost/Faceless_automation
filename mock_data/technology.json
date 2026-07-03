@@ -1,0 +1,36 @@
+[
+  {
+    "topic": "artificial general intelligence",
+    "story_template": "Timeline",
+    "viral_angle": "The secret timeline to AGI that tech companies are hiding.",
+    "curiosity_gap": "Why 2029 might be the point of no return for human employment.",
+    "hook": "What if the last invention humanity ever makes is already being built?",
+    "hook_style": "Question",
+    "core_message": "AGI is approaching faster than expected, and we must adapt.",
+    "emotional_arc": ["hook", "tension", "surprise", "proof", "payoff", "loop"],
+    "emotion_timeline": ["curiosity", "fear", "awe", "trust", "empowerment", "curiosity"],
+    "target_audience": "Tech enthusiasts and professionals",
+    "ending_type": "loop",
+    "cta_style": "question",
+    "visual_identity": "robot + neon interface",
+    "scene_count": 6,
+    "style_id": "flat_2d"
+  },
+  {
+    "topic": "quantum computing",
+    "story_template": "Myth vs Fact",
+    "viral_angle": "Quantum computers won't be in your pocket.",
+    "curiosity_gap": "Why quantum computers will break the internet before they play video games.",
+    "hook": "Everything you know about quantum computing is probably a lie.",
+    "hook_style": "Contradiction",
+    "core_message": "Quantum computers are specialized problem solvers, not faster regular computers.",
+    "emotional_arc": ["hook", "tension", "surprise", "proof", "payoff", "loop"],
+    "emotion_timeline": ["curiosity", "confusion", "clarity", "trust", "awe", "curiosity"],
+    "target_audience": "General tech-curious audience",
+    "ending_type": "loop",
+    "cta_style": "question",
+    "visual_identity": "brain + quantum circuits",
+    "scene_count": 6,
+    "style_id": "flat_2d"
+  }
+]

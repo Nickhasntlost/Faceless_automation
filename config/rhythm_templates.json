@@ -1,0 +1,94 @@
+{
+  "beats": {
+    "HOOK": {
+      "speech": 2.2,
+      "silence": 0.3
+    },
+    "BUILD": {
+      "speech": 1.8,
+      "silence": 0.5
+    },
+    "REVEAL": {
+      "speech": 1.2,
+      "silence": 1.2
+    },
+    "REACTION": {
+      "speech": 0.8,
+      "silence": 1.0
+    },
+    "PAYOFF": {
+      "speech": 1.5,
+      "silence": 0.8
+    },
+    "COMPARE": {
+      "speech": 2.0,
+      "silence": 0.5
+    },
+    "CONTRAST": {
+      "speech": 1.8,
+      "silence": 0.6
+    }
+  },
+  "templates": {
+    "Problem -> Solution": [
+      "HOOK",
+      "BUILD",
+      "REVEAL",
+      "PAYOFF"
+    ],
+    "Mystery": [
+      "HOOK",
+      "BUILD",
+      "BUILD",
+      "REVEAL",
+      "REACTION",
+      "PAYOFF"
+    ],
+    "Comparison": [
+      "HOOK",
+      "COMPARE",
+      "CONTRAST",
+      "PAYOFF"
+    ],
+    "Timeline": [
+      "HOOK",
+      "BUILD",
+      "BUILD",
+      "REVEAL",
+      "PAYOFF"
+    ],
+    "Myth vs Fact": [
+      "HOOK",
+      "BUILD",
+      "REVEAL",
+      "REACTION",
+      "PAYOFF"
+    ],
+    "Before/After": [
+      "HOOK",
+      "BUILD",
+      "REVEAL",
+      "PAYOFF"
+    ],
+    "Countdown": [
+      "HOOK",
+      "BUILD",
+      "REVEAL",
+      "REACTION",
+      "PAYOFF"
+    ],
+    "Journey": [
+      "HOOK",
+      "BUILD",
+      "REVEAL",
+      "REACTION",
+      "PAYOFF"
+    ],
+    "default": [
+      "HOOK",
+      "BUILD",
+      "REVEAL",
+      "PAYOFF"
+    ]
+  }
+}

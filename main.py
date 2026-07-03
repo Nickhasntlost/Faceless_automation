@@ -20,6 +20,12 @@ def parse_args() -> argparse.Namespace:
         description="Phase 1 local YouTube Shorts pipeline (Veo 3.1 Lite)."
     )
     parser.add_argument(
+        "--topic",
+        type=str,
+        default=None,
+        help="Specific topic for the video. If empty, the AI will pick one.",
+    )
+    parser.add_argument(
         "--mock",
         action="store_true",
         help="Run without paid API calls; uses ffmpeg placeholders.",
@@ -58,7 +64,7 @@ def main() -> int:
     )
 
     try:
-        report_path = run_pipeline(ROOT, simulation)
+        report_path = run_pipeline(ROOT, simulation, topic=args.topic)
     except KeyboardInterrupt:
         print("Interrupted. Quality report should be marked INCOMPLETE if written.")
         return 130

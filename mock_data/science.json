@@ -1,0 +1,36 @@
+[
+  {
+    "topic": "deep sea exploration",
+    "story_template": "Journey",
+    "viral_angle": "The alien world we haven't explored yet.",
+    "curiosity_gap": "Why we know more about the moon than the bottom of our own oceans.",
+    "hook": "Did you know there's an alien world right here on Earth?",
+    "hook_style": "Question",
+    "core_message": "The deep ocean holds secrets crucial to our planet's future.",
+    "emotional_arc": ["hook", "tension", "surprise", "proof", "payoff", "loop"],
+    "emotion_timeline": ["curiosity", "awe", "fear", "trust", "empowerment", "curiosity"],
+    "target_audience": "Science enthusiasts",
+    "ending_type": "loop",
+    "cta_style": "question",
+    "visual_identity": "earth + deep blue",
+    "scene_count": 6,
+    "style_id": "flat_2d"
+  },
+  {
+    "topic": "the fall of rome",
+    "story_template": "Timeline",
+    "viral_angle": "The hidden reason the Roman Empire actually fell.",
+    "curiosity_gap": "Why it wasn't just barbarians that destroyed Rome.",
+    "hook": "Rome didn't fall because of invaders. It fell from within.",
+    "hook_style": "Contradiction",
+    "core_message": "Economic collapse and political instability ruined the greatest empire.",
+    "emotional_arc": ["hook", "tension", "surprise", "proof", "payoff", "loop"],
+    "emotion_timeline": ["curiosity", "confusion", "clarity", "trust", "awe", "curiosity"],
+    "target_audience": "History buffs",
+    "ending_type": "loop",
+    "cta_style": "question",
+    "visual_identity": "earth + ancient architecture",
+    "scene_count": 6,
+    "style_id": "flat_2d"
+  }
+]

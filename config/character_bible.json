@@ -1,0 +1,64 @@
+{
+  "characters": {
+    "robot": {
+      "name": "robot",
+      "description": "friendly helper robot with rounded body",
+      "colors": ["electric blue", "silver gray"],
+      "expressions": ["neutral", "surprised", "thinking", "excited", "worried"],
+      "poses": ["standing", "pointing", "arms crossed", "running", "sitting at desk"],
+      "accessories": ["antenna", "screen face", "glowing eyes"],
+      "use_when": ["AI concepts", "automation", "future tech"]
+    },
+    "brain": {
+      "name": "brain",
+      "description": "stylized glowing brain with neural connections",
+      "colors": ["neon pink", "purple"],
+      "expressions": ["pulsing", "sparking", "dimming", "expanding"],
+      "poses": ["floating", "connected to wires", "inside head silhouette"],
+      "accessories": ["lightning bolts", "data streams", "gears"],
+      "use_when": ["intelligence", "learning", "neural networks", "thinking"]
+    },
+    "phone": {
+      "name": "phone",
+      "description": "oversized smartphone with animated screen",
+      "colors": ["dark gray", "bright screen glow"],
+      "expressions": ["notification burst", "loading", "cracked", "glowing"],
+      "poses": ["held in hand", "floating", "split open", "stacked"],
+      "accessories": ["app icons", "signal waves", "charging cable"],
+      "use_when": ["apps", "social media", "mobile tech", "notifications"]
+    },
+    "earth": {
+      "name": "earth",
+      "description": "cartoon globe with simple continent outlines",
+      "colors": ["blue", "green", "white clouds"],
+      "expressions": ["spinning", "zooming in", "cracking", "glowing"],
+      "poses": ["floating in space", "held in hands", "surrounded by satellites"],
+      "accessories": ["data lines connecting cities", "satellite ring", "wifi signals"],
+      "use_when": ["global impact", "internet", "worldwide", "connectivity"]
+    },
+    "scientist": {
+      "name": "scientist",
+      "description": "simplified lab coat figure with goggles",
+      "colors": ["white coat", "teal accents"],
+      "expressions": ["eureka", "concerned", "focused", "presenting"],
+      "poses": ["pointing at board", "holding beaker", "typing", "arms wide"],
+      "accessories": ["lab goggles", "clipboard", "hologram display"],
+      "use_when": ["research", "discovery", "experiments", "breakthroughs"]
+    }
+  },
+  "selection_rules": [
+    "Pick 1-2 primary characters per video for consistency",
+    "Character must appear in at least 3 of 5-6 scenes",
+    "Expressions must match the emotional beat of the scene",
+    "Never mix more than 3 characters in a single scene",
+    "Semantic mapping MUST be followed: AI->Robot, Brain->Intelligence, Phone->Apps, Earth->Global, Scientist->Discovery, Money->Coins, Virus->Microbe, Cloud->Servers, Satellite->Space"
+  ],
+  "topic_mapping": {
+    "earthquake": ["earth", "scientist"],
+    "space": ["earth"],
+    "health": ["brain", "scientist"],
+    "finance": ["robot"],
+    "technology": ["robot", "phone", "brain"],
+    "science": ["scientist", "brain", "earth"]
+  }
+}

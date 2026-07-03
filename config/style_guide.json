@@ -1,0 +1,22 @@
+{
+  "art_style": "flat 2D animation style, bold black outlines",
+  "palette": "limited vibrant color palette",
+  "lighting": "high contrast, clean lighting",
+  "background_rules": "simple backgrounds, no busy patterns, solid or gradient fills",
+  "animation_rules": "smooth motion, clean motion graphics, The Infographics Show aesthetic",
+  "character_rules": "simplified characters, expressive poses, no realistic faces",
+  "aspect_ratio": "9:16 vertical frame",
+  "resolution": "720p",
+  "negative_prompts": [
+    "photorealistic",
+    "live action",
+    "talking heads",
+    "text overlays",
+    "captions",
+    "watermarks",
+    "blurry",
+    "stock photo",
+    "real people",
+    "news footage"
+  ]
+}
