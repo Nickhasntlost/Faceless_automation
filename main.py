@@ -26,6 +26,13 @@ def parse_args() -> argparse.Namespace:
         help="Specific topic for the video. If empty, the AI will pick one.",
     )
     parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["manual", "trend", "hybrid"],
+        default="trend",
+        help="Topic selection mode.",
+    )
+    parser.add_argument(
         "--mock",
         action="store_true",
         help="Run without paid API calls; uses ffmpeg placeholders.",
@@ -55,6 +62,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    
+    # Automatically switch mode to manual or hybrid if topic is provided
+    # and mode is still the default "trend". If user explicitly requested "hybrid", keep it.
+    mode = args.mode
+    if args.topic and mode == "trend":
+        mode = "manual"
+        
     simulation = SimulationFlags(
         mock=args.mock,
         skip_upload=args.skip_upload,
@@ -64,7 +78,8 @@ def main() -> int:
     )
 
     try:
-        report_path = run_pipeline(ROOT, simulation, topic=args.topic)
+        report_path = run_pipeline(ROOT, simulation, topic=args.topic, mode=mode)
+
     except KeyboardInterrupt:
         print("Interrupted. Quality report should be marked INCOMPLETE if written.")
         return 130

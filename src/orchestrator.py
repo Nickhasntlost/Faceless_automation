@@ -17,6 +17,8 @@ from src.config_loader import (
 )
 from src.models import Scene, ScriptPackage, make_run_paths
 from src.agents.creative_director import generate_creative_plan
+from src.agents.script_writer import generate_script
+from src.agents.timestamp_planner import plan_timestamps
 from src.agents.retention_director import generate_retention_plan
 from src.agents.storyboard_generator import generate_storyboard
 from src.agents.scene_planner import plan_scenes
@@ -57,7 +59,7 @@ def _check_ffmpeg() -> None:
         raise RuntimeError("ffmpeg is required but was not found on PATH") from exc
 
 
-def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None) -> Path:
+def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mode: str = "trend") -> Path:
     _check_ffmpeg()
     pipeline_config = load_pipeline_config(root)
     pricing = load_pricing_config(root)
@@ -123,10 +125,33 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None) -> 
                 gate.write_report(paths.quality_report_path)
                 return paths.quality_report_path
 
-        plan = generate_creative_plan(topic, identity, pricing.script_model_id, mock=mock)
+        from src.agents.trend_scorer import get_best_trending_topic
+        
+        final_topic = topic
+        if mode == "trend":
+            final_topic = get_best_trending_topic(identity, pricing.script_model_id)
+            gate.note(f"Trend mode selected topic: {final_topic}")
+        elif mode == "hybrid":
+            final_topic = get_best_trending_topic(identity, pricing.script_model_id, manual_hint=topic)
+            gate.note(f"Hybrid mode selected topic: {final_topic}")
+        elif mode == "manual" and not topic:
+            final_topic = "Latest breakthrough in technology"
+            
+        plan = generate_creative_plan(final_topic, identity, pricing.script_model_id, mock=mock)
+        full_script = generate_script(plan, identity, pricing.script_model_id, mock=mock)
+        timestamp_plan = plan_timestamps(
+            full_script.full_script,
+            pricing.script_model_id,
+            mock=mock,
+            target_segments=6,
+        )
+        if not gate.validate_story_flow(full_script.full_script, timestamp_plan):
+            gate.write_report(paths.quality_report_path)
+            return paths.quality_report_path
+
         rhythm_config = load_rhythm_config(root)
         retention = generate_retention_plan(plan, rhythm_config)
-        storyboard = generate_storyboard(plan, retention)
+        storyboard = generate_storyboard(plan, retention, timestamp_plan)
         planned_scenes, warnings = plan_scenes(storyboard, char_bible, motion_rules, rhythm_config, pricing.script_model_id, mock=mock, diversity_rules=diversity_rules)
 
         scenes = []
@@ -162,10 +187,13 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None) -> 
         )
 
         import json
+        def json_default(o):
+            return o.__dict__ if hasattr(o, '__dict__') else str(o)
+            
         with open(paths.run_dir / "creative_plan.json", "w", encoding="utf-8") as f:
-            json.dump(plan.__dict__, f, indent=2)
+            json.dump(plan.__dict__, f, indent=2, default=json_default)
         with open(paths.run_dir / "storyboard.json", "w", encoding="utf-8") as f:
-            json.dump({"items": [item.__dict__ for item in storyboard.items]}, f, indent=2)
+            json.dump({"items": [item.__dict__ for item in storyboard.items]}, f, indent=2, default=json_default)
         
         script_dict = script.__dict__.copy()
         script_dict["scenes"] = [s.__dict__ for s in script.scenes]
@@ -178,7 +206,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None) -> 
                 sd["rhythm_plan"] = [b.__dict__ for b in s.rhythm_plan]
             script_dict["planned_scenes"].append(sd)
         with open(paths.run_dir / "script.json", "w", encoding="utf-8") as f:
-            json.dump(script_dict, f, indent=2)
+            json.dump(script_dict, f, indent=2, default=json_default)
 
         gate.mark_stage_complete("script")
         gate.record_cost("script", budget.estimate_script_cost(800, 1200))

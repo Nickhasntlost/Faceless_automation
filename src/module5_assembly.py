@@ -112,7 +112,14 @@ def _seconds_to_ass_time(seconds: float) -> str:
     return f"{hours:01d}:{minutes:02d}:{secs:05.2f}"
 
 
-def build_ass_subtitles(timings: list[WordTiming], ass_path: Path) -> None:
+def build_ass_subtitles(timings: list[WordTiming], ass_path: Path, script: ScriptPackage | None = None) -> None:
+    # Gather emphasis words from script
+    emphasis_words_set = set()
+    if script:
+        for scene in script.planned_scenes:
+            for w in getattr(scene, 'emphasis_words', []):
+                emphasis_words_set.add(w.lower().strip(".,!?"))
+                
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -121,35 +128,67 @@ def build_ass_subtitles(timings: list[WordTiming], ass_path: Path) -> None:
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Word,Arial Black,52,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,4,0,2,40,40,120,1",
+        "Style: Word,Arial Black,48,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,4,0,2,40,40,120,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
     
-    # Group words into 2-3 word phrases for readability, but NEVER cross long pauses
-    MAX_GROUP_SIZE = 3
-    MAX_GAP = 0.4  # seconds
+    # Phrase boundary logic
+    def is_boundary(w1: WordTiming, w2: WordTiming) -> bool:
+        if any(p in w1.word for p in ['.', ',', '?', '!', '—', ':']):
+            return True
+        if w2.word.lower() in ['and', 'but', 'or', 'because', 'so', 'then']:
+            return True
+        if w2.start_seconds - w1.end_seconds > 0.35:
+            return True
+        return False
+
+    # Group into phrases
+    phrases = []
+    current_phrase = []
     
-    i = 0
-    while i < len(timings):
-        group = [timings[i]]
-        
-        # Look ahead to see if we should include next words
-        j = i + 1
-        while j < len(timings) and len(group) < MAX_GROUP_SIZE:
-            gap = timings[j].start_seconds - timings[j-1].end_seconds
-            if gap > MAX_GAP:
-                break
-            group.append(timings[j])
-            j += 1
+    for i, t in enumerate(timings):
+        current_phrase.append(t)
+        if i == len(timings) - 1 or len(current_phrase) >= 6 or is_boundary(t, timings[i+1]):
+            phrases.append(current_phrase)
+            current_phrase = []
             
-        start = _seconds_to_ass_time(group[0].start_seconds)
-        end = _seconds_to_ass_time(max(group[-1].end_seconds, group[0].start_seconds + 0.3))
-        text = " ".join(t.word.upper() for t in group)
-        lines.append(f"Dialogue: 0,{start},{end},Word,,0,0,0,,{text}")
+    # Generate ASS events
+    for phrase in phrases:
+        phrase_start = phrase[0].start_seconds
+        phrase_end = max(phrase[-1].end_seconds, phrase[0].start_seconds + 0.3)
         
-        i = j
+        for i, word in enumerate(phrase):
+            # Calculate active duration for this specific word
+            active_start = word.start_seconds
+            if i < len(phrase) - 1:
+                active_end = phrase[i+1].start_seconds
+            else:
+                active_end = phrase_end
+                
+            ass_start = _seconds_to_ass_time(active_start)
+            ass_end = _seconds_to_ass_time(active_end)
+            
+            styled_words = []
+            for w in phrase:
+                clean_w = w.word.strip(".,!?").lower()
+                text = w.word.upper()
+                is_active = (w == word)
+                is_emp = (clean_w in emphasis_words_set)
+                
+                if is_active:
+                    if is_emp:
+                        # Yellow (BGR -> 00FFFF) and slightly larger
+                        styled_words.append(f"{{\\c&H00FFFF&\\fscx115\\fscy115}}{text}{{\\r}}")
+                    else:
+                        # Just slightly larger, keep white
+                        styled_words.append(f"{{\\fscx110\\fscy110}}{text}{{\\r}}")
+                else:
+                    styled_words.append(text)
+                    
+            event_text = " ".join(styled_words)
+            lines.append(f"Dialogue: 0,{ass_start},{ass_end},Word,,0,0,0,,{event_text}")
     
     ass_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

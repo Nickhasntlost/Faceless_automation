@@ -269,6 +269,33 @@ class CreativePlan:
 
 
 @dataclass
+class FullScript:
+    title: str
+    hook: str
+    full_script: str
+    estimated_duration: float
+    story_template: str
+    hook_style: str
+
+
+@dataclass
+class TimestampSegment:
+    index: int
+    start: float
+    end: float
+    narration: str
+
+    @property
+    def duration(self) -> float:
+        return round(self.end - self.start, 3)
+
+
+@dataclass
+class TimestampPlan:
+    segments: list[TimestampSegment]
+
+
+@dataclass
 class VisualDiversityRules:
     camera: dict[str, Any]
     background: dict[str, Any]
@@ -303,6 +330,7 @@ class StoryboardItem:
     retention_trigger: str
     emotional_beat: str
     pause_duration: float  # DEPRECATED
+    timestamp_segment: TimestampSegment | None = None
     rhythm_template: str = "default"
 
 
@@ -335,6 +363,7 @@ class PlannedScene:
     speech_ratio: float = 0.0
     visual_ratio: float = 0.0
     visual_focus: str = ""  # e.g. "character_closeup", "environment", "data_visualization"
+    emphasis_words: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         # Migration layer: If legacy data provides pause_points but no rhythm_plan, map it
