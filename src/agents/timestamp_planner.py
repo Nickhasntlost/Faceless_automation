@@ -113,10 +113,17 @@ natural, contiguous segments. Never rewrite, add, remove, or reorder a word. Spl
 idea, favoring suspense, reveals, questions, and emotional beats. Do not split mechanically by sentence count.
 Target roughly 7-8 seconds per segment while preserving story flow.
 
+Also decide the dramatic pause needed after this segment before the next one starts.
+Choose one of:
+"none": no artificial pause needed (e.g., standard continuation)
+"micro": a very slight pause (e.g., before continuing a fast thought)
+"reaction": a short pause to let something sink in
+"dramatic": a long pause for heavy suspense or realization
+
 Full script ({total_duration:.1f} seconds):
 {full_script}
 
-Return JSON only as {{'segments': [{{'index': 1, 'start': 0.0, 'end': 7.8, 'narration': 'exact text'}}]}}.
+Return JSON only as {{'segments': [{{'index': 1, 'start': 0.0, 'end': 7.8, 'narration': 'exact text', 'pause_type': 'none'}}]}}.
 '''
         response = client.models.generate_content(
             model=model_id,

@@ -284,6 +284,7 @@ class TimestampSegment:
     start: float
     end: float
     narration: str
+    pause_type: str = "none"
 
     @property
     def duration(self) -> float:

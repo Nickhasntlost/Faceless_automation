@@ -272,16 +272,16 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
         if warnings:
             gate.degrade("validation", f"Found {len(warnings)} warnings during scene planning/linting.")
 
-        # Compute scene narration boundaries (word indices where each scene starts)
-        # so the TTS can insert <break> tags at scene transitions
+        # Compute semantic pause requests from Timestamp Planner output
+        # to inject <break> tags directly into the TTS engine.
         import re
-        scene_boundaries: list[int] = []
+        pause_requests: dict[int, str] = {}
         word_cursor = 0
-        for s in scenes:
-            if word_cursor > 0:
-                scene_boundaries.append(word_cursor)
-            scene_word_count = len(re.findall(r"\b[\w']+\b", s.narration))
-            word_cursor += scene_word_count
+        for seg in timestamp_plan.segments:
+            seg_word_count = len(re.findall(r"\b[\w']+\b", seg.narration))
+            word_cursor += seg_word_count
+            if hasattr(seg, "pause_type") and seg.pause_type not in ("none", "", None):
+                pause_requests[word_cursor - 1] = seg.pause_type
 
         voice = synthesize_voice(
             script,
@@ -291,7 +291,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             paths.voice_audio_path,
             paths.voice_timing_path,
             mock=mock,
-            scene_boundaries=scene_boundaries,
+            pause_requests=pause_requests,
         )
         gate.mark_stage_complete("voice")
         gate.record_cost("voice", voice.estimated_cost_usd)

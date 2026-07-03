@@ -15,28 +15,83 @@ logger = logging.getLogger("shorts_pipeline.voice")
 
 
 def _tokenize_words(text: str) -> list[str]:
+    # Semantic tokenization: returns clean alphanumeric words for alignment and character counts,
+    # but _build_ssml will now use the raw text to perfectly preserve punctuation.
     return re.findall(r"\b[\w']+\b", text)
 
 
-def _build_ssml(words: list[str], scene_boundaries: list[int] | None = None) -> str:
-    """Build SSML with <mark> tags for each word and <break> tags at scene boundaries.
+def _build_ssml(raw_text: str, pause_requests: dict[int, str] = None, emphasis_words: set[str] = None) -> tuple[str, list[str]]:
+    """Build SSML with <mark> tags for each word, perfectly preserving original punctuation,
+    and injecting <break> tags after specified words.
     
     Args:
-        words: List of words to speak.
-        scene_boundaries: List of word indices where a new scene starts.
-            A <break> tag is inserted before these words.
+        raw_text: The full script with original punctuation.
+        pause_requests: Dict mapping word_index to pause_type ("micro", "reaction", "dramatic").
+        emphasis_words: Set of lowercase words to wrap in <emphasis> tags.
+    Returns:
+        (ssml_string, clean_words_list)
     """
-    boundaries = set(scene_boundaries or [])
+    pause_requests = pause_requests or {}
+    emphasis_words = emphasis_words or set()
     parts = ["<speak>"]
-    for idx, word in enumerate(words):
-        if idx in boundaries and idx > 0:
-            parts.append('<break time="600ms"/>')
-        escaped = xml.sax.saxutils.escape(word)
-        parts.append(f'<mark name="w{idx}"/>{escaped}')
-        if idx != len(words) - 1:
-            parts.append(" ")
+    clean_words = []
+    
+    last_end = 0
+    word_index = 0
+    
+    matches = list(re.finditer(r"\b[\w']+\b", raw_text))
+    
+    for i, match in enumerate(matches):
+        word = match.group(0)
+        start = match.start()
+        end = match.end()
+        
+        # Add any intervening text (spaces, punctuation) BEFORE the word
+        intervening = raw_text[last_end:start]
+        if intervening:
+            parts.append(xml.sax.saxutils.escape(intervening))
+            
+        # If the PREVIOUS word requested a semantic pause, insert the break AFTER the punctuation
+        # that just followed it (which we just appended as `intervening` text).
+        if (word_index - 1) in pause_requests:
+            p_type = pause_requests[word_index - 1]
+            if p_type == "micro":
+                parts.append('<break time="150ms"/>')
+            elif p_type == "reaction":
+                parts.append('<break time="300ms"/>')
+            elif p_type == "dramatic":
+                parts.append('<break time="450ms"/>')
+                
+        # Add the mark tag directly before the word
+        parts.append(f'<mark name="w{word_index}"/>')
+        
+        escaped_word = xml.sax.saxutils.escape(word)
+        if word.lower() in emphasis_words:
+            parts.append(f'<emphasis level="strong">{escaped_word}</emphasis>')
+        else:
+            parts.append(escaped_word)
+            
+        clean_words.append(word)
+        last_end = end
+        word_index += 1
+        
+    # Add any trailing punctuation/text after the final word
+    trailing = raw_text[last_end:]
+    if trailing:
+        parts.append(xml.sax.saxutils.escape(trailing))
+        
+    # If a pause was requested on the very last word
+    if (word_index - 1) in pause_requests:
+        p_type = pause_requests[word_index - 1]
+        if p_type == "micro":
+            parts.append('<break time="150ms"/>')
+        elif p_type == "reaction":
+            parts.append('<break time="300ms"/>')
+        elif p_type == "dramatic":
+            parts.append('<break time="450ms"/>')
+            
     parts.append("</speak>")
-    return "".join(parts)
+    return "".join(parts), clean_words
 
 
 def _timings_from_marks(words: list[str], marks: list[tuple[str, float]], audio_duration: float) -> list[WordTiming]:
@@ -141,17 +196,21 @@ def synthesize_voice(
     audio_path: Path,
     timing_path: Path,
     mock: bool = False,
-    scene_boundaries: list[int] | None = None,
+    pause_requests: dict[int, str] | None = None,
 ) -> VoiceResult:
-    words = _tokenize_words(script.full_narration)
-    if not words:
-        raise ValueError("Script has no speakable words")
-
     if mock:
         logger.warning("Voice pipeline running in mock mode")
         return _mock_voice(script, audio_path, timing_path)
 
-    ssml = _build_ssml(words, scene_boundaries=scene_boundaries)
+    # Collect emphasis words from planned scenes
+    emphasis_set = set()
+    for s in script.planned_scenes:
+        if hasattr(s, "emphasis_words"):
+            emphasis_set.update([w.lower() for w in s.emphasis_words])
+
+    ssml, words = _build_ssml(script.full_narration, pause_requests=pause_requests, emphasis_words=emphasis_set)
+    if not words:
+        raise ValueError("Script has no speakable words")
     character_count = len(ssml)
     projected_cost = budget.estimate_tts_cost(character_count)
     budget.assert_can_spend(projected_cost, "cloud_tts_studio")

@@ -1,13 +1,11 @@
 {
   "niche": "AI and emerging technology",
   "persona": "Sharp, curious tech explainer — think The Infographics Show meets a tech insider",
-  "tone": "Punchy, question-led, slightly provocative but always factual. Short sentences. No fluff.",
+  "tone": "Punchy, conversational, and genuinely curious. Vary sentence length intentionally. Avoid textbook language.",
   "audience": "Tech-curious viewers aged 18-35 who scroll fast and think faster",
   "content_rules": [
     "First word of hook must create instant curiosity",
     "Hook must be a question — never a statement",
-    "Max 10 words per sentence",
-    "Max 2 sentences per scene",
     "One clear insight per Short — no list videos",
     "End with a loop line that makes viewers rewatch",
     "Every visual must match flat 2D animation style"
