@@ -106,6 +106,10 @@ class BudgetGuard:
     def estimate_tts_cost(self, character_count: int) -> float:
         return (character_count / 1_000_000) * self.pricing.tts_usd_per_1m_characters
 
+    def estimate_elevenlabs_cost(self, character_count: int) -> float:
+        # ElevenLabs standard rate is ~$0.30 per 1000 characters
+        return (character_count / 1_000) * 0.30
+
     def estimate_veo_cost(self, duration_seconds: int, resolution: str) -> float:
         rate = self.pricing.veo_usd_per_second.get(resolution)
         if rate is None:

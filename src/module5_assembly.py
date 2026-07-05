@@ -18,91 +18,8 @@ def assemble_audio_timeline(
     voice: VoiceResult, 
     output_path: Path
 ) -> list[WordTiming]:
-    pauses = []
-    
-    current_tts_time = 0.0
-    word_idx = 0
-    
-    for scene in script.planned_scenes:
-        for b in getattr(scene, 'rhythm_plan', []):
-            target_cut_time = current_tts_time + b.speech_target
-            
-            if b.silence_target <= 0:
-                current_tts_time = target_cut_time
-                continue
-                
-            best_idx = word_idx
-            best_diff = float('inf')
-            
-            for i in range(word_idx, len(voice.timings)):
-                diff = abs(voice.timings[i].end_seconds - target_cut_time)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_idx = i
-                elif diff > best_diff:
-                    # diff is increasing, we passed the closest word
-                    break
-                    
-            if best_idx < len(voice.timings):
-                word_end = voice.timings[best_idx].end_seconds
-                if best_idx + 1 < len(voice.timings):
-                    next_word_start = voice.timings[best_idx+1].start_seconds
-                    actual_cut_time = word_end + (next_word_start - word_end) / 2.0
-                else:
-                    actual_cut_time = word_end + 0.1
-                pauses.append((actual_cut_time, b.silence_target))
-                current_tts_time = actual_cut_time
-                word_idx = best_idx + 1
-
-    # Remove duplicate cut times if any (should be rare, but just in case)
-    # If there are duplicates, we merge their silence durations.
-    merged_pauses = {}
-    for t, dur in pauses:
-        merged_pauses[t] = merged_pauses.get(t, 0) + dur
-    pauses = sorted(list(merged_pauses.items()), key=lambda x: x[0])
-    
-    adjusted_timings = []
-    for t in voice.timings:
-        shift = sum(dur for (timestamp, dur) in pauses if timestamp <= t.start_seconds + 0.01)
-        adjusted_timings.append(WordTiming(
-            word=t.word,
-            start_seconds=t.start_seconds + shift,
-            end_seconds=t.end_seconds + shift,
-            mark_name=t.mark_name
-        ))
-    
-    if not pauses:
-        shutil.copy(audio_path, output_path)
-        return adjusted_timings
-
-    filter_parts = []
-    inputs_count = 0
-    last_t = 0.0
-    for idx, (t, dur) in enumerate(pauses):
-        filter_parts.append(f"[0:a]atrim={last_t}:{t},asetpts=PTS-STARTPTS[a{idx}]")
-        filter_parts.append(f"anullsrc=d={dur}:r=48000:cl=stereo[s{idx}]")
-        inputs_count += 2
-        last_t = t
-        
-    filter_parts.append(f"[0:a]atrim={last_t}:9999,asetpts=PTS-STARTPTS[a{len(pauses)}]")
-    inputs_count += 1
-    
-    concat_inputs = "".join(f"[a{i}][s{i}]" for i in range(len(pauses))) + f"[a{len(pauses)}]"
-    filter_parts.append(f"{concat_inputs}concat=n={inputs_count}:v=0:a=1[outa]")
-    filter_parts.append(f"anoisesrc=c=brown:a=0.005:r=48000[noise_mono]")
-    filter_parts.append(f"[noise_mono]aformat=channel_layouts=stereo[noise]")
-    filter_parts.append(f"[outa][noise]amix=inputs=2:duration=first:normalize=0[final_audio]")
-    
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(audio_path),
-        "-filter_complex", "; ".join(filter_parts),
-        "-map", "[final_audio]",
-        str(output_path)
-    ]
-    _run_ffmpeg(cmd)
-    
-    return adjusted_timings
+    shutil.copy(audio_path, output_path)
+    return voice.timings
 
 
 def _seconds_to_ass_time(seconds: float) -> str:
@@ -128,7 +45,7 @@ def build_ass_subtitles(timings: list[WordTiming], ass_path: Path, script: Scrip
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Word,Arial Black,48,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,4,0,2,40,40,120,1",
+        "Style: Default,Arial Black,56,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,1,0,0,0,100,100,0,0,4,3,0,2,40,40,80,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -144,51 +61,43 @@ def build_ass_subtitles(timings: list[WordTiming], ass_path: Path, script: Scrip
             return True
         return False
 
-    # Group into phrases
+    # Group into phrases (3-4 words per chunk)
     phrases = []
     current_phrase = []
     
     for i, t in enumerate(timings):
         current_phrase.append(t)
-        if i == len(timings) - 1 or len(current_phrase) >= 6 or is_boundary(t, timings[i+1]):
+        if i == len(timings) - 1 or len(current_phrase) >= 4 or is_boundary(t, timings[i+1]):
             phrases.append(current_phrase)
             current_phrase = []
             
     # Generate ASS events
     for phrase in phrases:
-        phrase_start = phrase[0].start_seconds
-        phrase_end = max(phrase[-1].end_seconds, phrase[0].start_seconds + 0.3)
+        phrase_start = _seconds_to_ass_time(phrase[0].start_seconds)
+        phrase_end = _seconds_to_ass_time(max(phrase[-1].end_seconds, phrase[0].start_seconds + 0.3))
         
+        # Base event: full phrase in white, layer 0
+        plain_text = " ".join(w.word.upper() for w in phrase)
+        lines.append(f"Dialogue: 0,{phrase_start},{phrase_end},Default,,0,0,0,,{plain_text}")
+        
+        # Highlight events: one per word, layer 1
         for i, word in enumerate(phrase):
-            # Calculate active duration for this specific word
             active_start = word.start_seconds
-            if i < len(phrase) - 1:
-                active_end = phrase[i+1].start_seconds
-            else:
-                active_end = phrase_end
+            active_end = phrase[i+1].start_seconds if i < len(phrase) - 1 else max(word.end_seconds, active_start + 0.1)
                 
             ass_start = _seconds_to_ass_time(active_start)
             ass_end = _seconds_to_ass_time(active_end)
             
             styled_words = []
             for w in phrase:
-                clean_w = w.word.strip(".,!?").lower()
                 text = w.word.upper()
-                is_active = (w == word)
-                is_emp = (clean_w in emphasis_words_set)
-                
-                if is_active:
-                    if is_emp:
-                        # Yellow (BGR -> 00FFFF) and slightly larger
-                        styled_words.append(f"{{\\c&H00FFFF&\\fscx115\\fscy115}}{text}{{\\r}}")
-                    else:
-                        # Just slightly larger, keep white
-                        styled_words.append(f"{{\\fscx110\\fscy110}}{text}{{\\r}}")
+                if w == word:
+                    styled_words.append(f"{{\\c&H00FFFF&}}{text}{{\\r}}")
                 else:
                     styled_words.append(text)
                     
             event_text = " ".join(styled_words)
-            lines.append(f"Dialogue: 0,{ass_start},{ass_end},Word,,0,0,0,,{event_text}")
+            lines.append(f"Dialogue: 1,{ass_start},{ass_end},Default,,0,0,0,,{event_text}")
     
     ass_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -368,6 +277,34 @@ def assemble_final_video(
         mix_narration(concat_path, padded_audio_path, mixed_path)
 
     burn_captions(mixed_path, ass_path, final_path)
+
+    # Background music mix
+    import random
+    import shutil
+    music_dir = assembly_dir.parent.parent.parent / "assets" / "music"
+    tracks = list(music_dir.glob("*.mp3")) + list(music_dir.glob("*.wav")) if music_dir.exists() else []
+    
+    if tracks:
+        track = random.choice(tracks)
+        final_video_duration = sum(scene_durations)
+        temp_music_path = assembly_dir / "final_with_music.mp4"
+        _run_ffmpeg([
+            "ffmpeg", "-y",
+            "-i", str(final_path),
+            "-stream_loop", "-1",
+            "-i", str(track),
+            "-t", str(final_video_duration),
+            "-filter_complex",
+            f"[1:a]volume=0.10,afade=t=out:st={max(0, final_video_duration - 2)}:d=2[music];[0:a][music]amix=inputs=2:duration=first[aout]",
+            "-map", "0:v",
+            "-map", "[aout]",
+            "-c:v", "copy",
+            str(temp_music_path)
+        ])
+        shutil.move(str(temp_music_path), str(final_path))
+        logger.info(f"Mixed background music: {track.name}")
+    else:
+        logger.info("No music tracks found in assets/music/, skipping background music.")
 
     first_word = voice.timings[0].word if voice.timings else script.hook.split()[0]
     sample_time = voice.timings[0].start_seconds if voice.timings else 0.5

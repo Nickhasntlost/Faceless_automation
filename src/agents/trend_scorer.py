@@ -39,7 +39,7 @@ class TrendCollector:
         for sub in subreddits:
             url = f"https://www.reddit.com/r/{sub}/hot.json?limit=5"
             try:
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 (ViralShortsGenerator/1.0)'})
+                req = urllib.request.Request(url, headers={'User-Agent': 'python:youtubeshortsgenerator:v1.0 (by /u/pipeline)'})
                 with urllib.request.urlopen(req, timeout=5) as response:
                     data = json.loads(response.read().decode())
                     for post in data['data']['children']:

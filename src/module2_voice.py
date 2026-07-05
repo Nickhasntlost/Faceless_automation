@@ -19,6 +19,26 @@ def _tokenize_words(text: str) -> list[str]:
     # but _build_ssml will now use the raw text to perfectly preserve punctuation.
     return re.findall(r"\b[\w']+\b", text)
 
+def _verify_ssml(ssml: str) -> None:
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(ssml)
+    except ET.ParseError as e:
+        raise ValueError(f"SSML is not valid XML: {e}")
+        
+    if root.tag != "speak":
+        raise ValueError("SSML root must be <speak>")
+        
+    for elem in root.iter():
+        if elem.tag == "break":
+            if "time" not in elem.attrib:
+                raise ValueError("<break> tag missing 'time' attribute")
+            if not re.match(r"^\d+ms$", elem.attrib["time"]):
+                raise ValueError(f"Invalid break time format: {elem.attrib['time']}")
+        elif elem.tag == "emphasis":
+            if "level" not in elem.attrib:
+                raise ValueError("<emphasis> tag missing 'level' attribute")
+
 
 def _build_ssml(raw_text: str, pause_requests: dict[int, str] = None, emphasis_words: set[str] = None) -> tuple[str, list[str]]:
     """Build SSML with <mark> tags for each word, perfectly preserving original punctuation,
@@ -197,50 +217,126 @@ def synthesize_voice(
     timing_path: Path,
     mock: bool = False,
     pause_requests: dict[int, str] | None = None,
+    dry_run: bool = False,
 ) -> VoiceResult:
     if mock:
         logger.warning("Voice pipeline running in mock mode")
         return _mock_voice(script, audio_path, timing_path)
 
-    # Collect emphasis words from planned scenes
-    emphasis_set = set()
-    for s in script.planned_scenes:
-        if hasattr(s, "emphasis_words"):
-            emphasis_set.update([w.lower() for w in s.emphasis_words])
-
-    ssml, words = _build_ssml(script.full_narration, pause_requests=pause_requests, emphasis_words=emphasis_set)
-    if not words:
+    raw_text = script.full_narration
+    if not raw_text.strip():
         raise ValueError("Script has no speakable words")
-    character_count = len(ssml)
-    projected_cost = budget.estimate_tts_cost(character_count)
-    budget.assert_can_spend(projected_cost, "cloud_tts_studio")
+        
+    character_count = len(raw_text)
+    projected_cost = budget.estimate_elevenlabs_cost(character_count)
+    budget.assert_can_spend(projected_cost, "elevenlabs_tts")
 
-    @with_timeout(pipeline_config.api_timeout_seconds, "cloud_tts_studio")
+    if dry_run:
+        logger.info("Dry run enabled: Skipping ElevenLabs TTS")
+        # Estimate marks based on words
+        words = _tokenize_words(raw_text)
+        timings = []
+        cursor = 0.0
+        for idx, word in enumerate(words):
+            duration = 0.25
+            timings.append(
+                WordTiming(
+                    word=word,
+                    start_seconds=cursor,
+                    end_seconds=cursor + duration,
+                    mark_name=f"w{idx}",
+                )
+            )
+            cursor += duration + 0.05
+            
+        write_json(
+            timing_path,
+            {
+                "words": [t.__dict__ for t in timings],
+                "character_count": character_count,
+                "mark_count": len(words),
+                "word_count": len(words),
+            },
+        )
+        return VoiceResult(
+            audio_path=audio_path,
+            timings=timings,
+            character_count=character_count,
+            estimated_cost_usd=0.0,
+        )
+
+    @with_timeout(pipeline_config.api_timeout_seconds, "elevenlabs_tts")
     def _call_tts() -> VoiceResult:
-        from google.cloud import texttospeech_v1beta1 as texttospeech
-
-        client = texttospeech.TextToSpeechClient(transport="rest")
-        synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
-        voice = texttospeech.VoiceSelectionParams(
-            language_code=pipeline_config.tts_language_code,
-            name=pipeline_config.tts_voice_name,
-        )
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=1.05,
-        )
-        request = texttospeech.SynthesizeSpeechRequest(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config,
-            enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK],
-        )
-        response = client.synthesize_speech(request=request)
+        import os
+        import requests
+        import base64
+        
+        api_key = os.environ.get("ELEVENLABS_API_KEY")
+        voice_id = os.environ.get("ELEVENLABS_VOICE_ID", pipeline_config.tts_voice_name)
+        if not api_key or not voice_id:
+            raise RuntimeError("ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID must be set in environment")
+            
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
+        headers = {
+            "xi-api-key": api_key,
+            "Content-Type": "application/json"
+        }
+        data = {
+            "text": raw_text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75
+            }
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code != 200:
+            raise RuntimeError(f"ElevenLabs API error {response.status_code}: {response.text}")
+            
+        payload = response.json()
+        audio_bytes = base64.b64decode(payload["audio_base64"])
         audio_path.parent.mkdir(parents=True, exist_ok=True)
-        audio_path.write_bytes(response.audio_content)
-        marks = [(tp.mark_name, tp.time_seconds) for tp in response.timepoints]
-        duration = _estimate_mp3_duration_seconds(audio_path)
-        timings = _timings_from_marks(words, marks, duration)
+        audio_path.write_bytes(audio_bytes)
+        
+        alignment = payload.get("alignment", {})
+        chars = alignment.get("characters", [])
+        starts = alignment.get("character_start_times_seconds", [])
+        ends = alignment.get("character_end_times_seconds", [])
+        
+        timings = []
+        current_word = []
+        word_start = -1.0
+        word_idx = 0
+        
+        for i, char in enumerate(chars):
+            if i >= len(starts) or i >= len(ends):
+                break
+            if char.isalnum() or char == "'":
+                if not current_word:
+                    word_start = starts[i]
+                current_word.append(char)
+            else:
+                if current_word:
+                    word_str = "".join(current_word)
+                    timings.append(WordTiming(
+                        word=word_str,
+                        start_seconds=word_start,
+                        end_seconds=ends[i-1],
+                        mark_name=f"w{word_idx}"
+                    ))
+                    word_idx += 1
+                    current_word = []
+                    
+        if current_word and len(chars) > 0:
+            word_str = "".join(current_word)
+            timings.append(WordTiming(
+                word=word_str,
+                start_seconds=word_start,
+                end_seconds=ends[-1],
+                mark_name=f"w{word_idx}"
+            ))
+            
         return VoiceResult(
             audio_path=audio_path,
             timings=timings,
@@ -249,14 +345,15 @@ def synthesize_voice(
         )
 
     result = _call_tts()
-    mark_count = len([t for t in result.timings if t.mark_name.startswith("w")])
+    mark_count = len(result.timings)
+    words = _tokenize_words(raw_text)
     if mark_count < max(1, len(words) // 2):
         raise RuntimeError(
             f"TTS timing verification failed: expected ~{len(words)} word marks, got {mark_count}"
         )
     budget.record_spend(
         projected_cost,
-        "cloud_tts_studio",
+        "elevenlabs_tts",
         metadata={"characters": character_count, "word_count": len(words), "mark_count": mark_count},
     )
     write_json(

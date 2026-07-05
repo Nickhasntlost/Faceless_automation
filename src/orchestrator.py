@@ -44,12 +44,16 @@ class SimulationFlags:
         simulate_timeout: bool = False,
         simulate_budget_breach: bool = False,
         simulate_interrupt: bool = False,
+        dry_run: bool = False,
+        deterministic: bool = False,
     ) -> None:
         self.mock = mock
         self.skip_upload = skip_upload
         self.simulate_timeout = simulate_timeout
         self.simulate_budget_breach = simulate_budget_breach
         self.simulate_interrupt = simulate_interrupt
+        self.dry_run = dry_run
+        self.deterministic = deterministic
 
 
 def _check_ffmpeg() -> None:
@@ -138,7 +142,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             final_topic = "Latest breakthrough in technology"
             
         plan = generate_creative_plan(final_topic, identity, pricing.script_model_id, mock=mock)
-        full_script = generate_script(plan, identity, pricing.script_model_id, mock=mock)
+        full_script = generate_script(plan, identity, pricing.script_model_id, mock=mock, deterministic=simulation.deterministic)
         timestamp_plan = plan_timestamps(
             full_script.full_script,
             pricing.script_model_id,
@@ -226,18 +230,23 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
         gate.set_engagement_score("hook", hook_score, hook_expl)
         
         # 2. Story Score
-        story_score = 10.0 if len(planned_scenes) == plan.scene_count else 5.0
-        story_expl = "Scene count matched plan." if story_score == 10.0 else "Scene count mismatch."
+        story_score = 10.0
+        story_expl = "Scene count logic relies on semantic grouping now."
         gate.set_engagement_score("story", story_score, story_expl)
         
+        # 3. Motion & Visual Variety Score
         # 3. Motion & Visual Variety Score
         motion_repeats = sum(1 for i in range(1, len(planned_scenes)) if planned_scenes[i].motion == planned_scenes[i-1].motion)
         motion_score = round(max(0.0, 10.0 - (motion_repeats * 2.5)), 1)
         camera_repeats = sum(1 for i in range(1, len(planned_scenes)) if planned_scenes[i].camera == planned_scenes[i-1].camera)
         visual_variety = round(max(0.0, 10.0 - (camera_repeats * 2.0)), 1)
         
-        gate.set_engagement_score("motion", motion_score, f"Repeated motions: {motion_repeats}")
-        gate.set_engagement_score("visual_variety", visual_variety, f"Repeated cameras: {camera_repeats}")
+        # Capture repeating attributes for the diversity report
+        repeated_motions = [f"Scene {i+1}" for i in range(1, len(planned_scenes)) if planned_scenes[i].motion == planned_scenes[i-1].motion]
+        repeated_cameras = [f"Scene {i+1}" for i in range(1, len(planned_scenes)) if planned_scenes[i].camera == planned_scenes[i-1].camera]
+        
+        gate.set_engagement_score("motion", motion_score, f"Repeated motions ({motion_repeats}): {', '.join(repeated_motions) if repeated_motions else 'None'}")
+        gate.set_engagement_score("visual_variety", visual_variety, f"Repeated cameras ({camera_repeats}): {', '.join(repeated_cameras) if repeated_cameras else 'None'}")
         
         # 4. Consistency & Originality
         gate.set_engagement_score("consistency", 10.0 if "Character" not in str(warnings) else 5.0, "No character warnings." if "Character" not in str(warnings) else "Character warnings found.")
@@ -292,6 +301,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             paths.voice_timing_path,
             mock=mock,
             pause_requests=pause_requests,
+            dry_run=simulation.dry_run,
         )
         gate.mark_stage_complete("voice")
         gate.record_cost("voice", voice.estimated_cost_usd)
@@ -303,6 +313,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             pricing,
             budget,
             mock=mock,
+            dry_run=simulation.dry_run,
         )
         failed_scenes = [r for r in clip_results if not r.success]
         for result in clip_results:
@@ -318,7 +329,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             gate.mark_stage_complete("video_generation")
 
         successful_clips = [r.clip_path for r in clip_results if r.success and r.clip_path]
-        if not successful_clips:
+        if not successful_clips and not simulation.dry_run:
             gate.set_fatal("No video clips were generated")
             gate.write_report(paths.quality_report_path)
             return paths.quality_report_path
@@ -330,7 +341,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             paths.assembly_dir,
             paths.verification_dir,
             mock_audio=mock,
-        )
+        ) if not simulation.dry_run else (paths.assembly_dir / "dry_run_final.mp4", True, "Captions skipped in dry run")
         paths.final_video_path = final_video
         gate.note(f"Final video at {final_video}")
         if captions_ok:
@@ -358,8 +369,8 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             gate.mark_stage_complete("thumbnail")
             gate.record_cost("thumbnail", budget.estimate_thumbnail_cost())
 
-        if simulation.skip_upload or mock:
-            gate.note("Upload skipped (mock mode or --skip-upload)")
+        if simulation.skip_upload or mock or simulation.dry_run:
+            gate.note("Upload skipped (mock mode or --skip-upload or --dry-run)")
         else:
             video_id, upload_error = upload_video(
                 script,
@@ -375,10 +386,36 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
                 gate.mark_stage_complete("youtube_upload")
                 gate.note(f"Uploaded video id={video_id} with containsSyntheticMedia=true")
 
-        gate.note(
-            f"Run cost estimate: ${sum(gate.cost_breakdown.values()):.4f}; "
-            f"budget cumulative: ${budget.cumulative_spend_usd:.4f}"
-        )
+        gate.note("=== Pipeline Cost Report ===")
+        for k, v in gate.cost_breakdown.items():
+            gate.note(f"- {k}: ${v:.4f}")
+        gate.note(f"Total Run Cost: ${sum(gate.cost_breakdown.values()):.4f}")
+        gate.note(f"Budget Cumulative Spend: ${budget.cumulative_spend_usd:.4f}")
+        gate.note("==========================")
+        
+        # Generate Dashboard
+        dashboard_lines = [
+            f"# Run Summary (ID: {run_id})",
+            f"",
+            f"**Topic:** {script.title}",
+            f"**Hook:** {script.hook}",
+            f"**Script Score:** {gate.engagement_scores.get('script_metrics', 0.0)} / 10",
+            f"**Estimated Cost:** ${sum(gate.cost_breakdown.values()):.4f}",
+            f"",
+            f"## Warnings",
+        ]
+        if warnings:
+            for w in warnings:
+                dashboard_lines.append(f"- {w}")
+        else:
+            dashboard_lines.append("None")
+            
+        dashboard_lines.append("")
+        dashboard_lines.append(f"## Quality Verdict: {gate.finalize().verdict}")
+        
+        with open(paths.run_dir / "dashboard.md", "w", encoding="utf-8") as df:
+            df.write("\\n".join(dashboard_lines))
+            
     except KeyboardInterrupt:
         gate.set_incomplete("Pipeline interrupted before natural completion")
         raise

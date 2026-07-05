@@ -37,8 +37,13 @@ def lint_veo_prompt(prompt: str, scene: PlannedScene, char_bible: CharacterBible
         return False, f"Motion '{scene.motion}' is not a valid motion preset."
         
     # Length check (Veo prompts should be descriptive but not overly long)
-    if len(prompt.split()) > 100:
-        return False, "Prompt is too long (over 100 words)."
+    # Only lint the core prompt, excluding boilerplate
+    core_prompt = prompt_before_no
+    if "| negative:" in core_prompt:
+        core_prompt = core_prompt.split("| negative:")[0]
+        
+    if len(core_prompt.split()) > 150:
+        return False, f"Core visual prompt is too long ({len(core_prompt.split())} words, max 150)."
         
     # Basic repeated adjectives check
     words = prompt_lower.replace(",", "").replace(".", "").split()

@@ -147,8 +147,38 @@ def generate_scene_clips(
     pricing: PricingConfig,
     budget: BudgetGuard,
     mock: bool = False,
+    dry_run: bool = False,
 ) -> list[SceneClipResult]:
+    import json
+    
+    veo_prompts = []
     results: list[SceneClipResult] = []
+    
+    for scene in script.scenes:
+        augmented = _augment_veo_prompt(scene.visual_prompt, scene.index, len(script.scenes))
+        veo_prompts.append({
+            "scene": scene.index,
+            "core_prompt": scene.visual_prompt,
+            "veo_prompt": augmented
+        })
+        
+    clips_dir.parent.mkdir(parents=True, exist_ok=True)
+    veo_prompts_file = clips_dir.parent / "video" / "veo_prompts.json"
+    veo_prompts_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(veo_prompts_file, "w", encoding="utf-8") as f:
+        json.dump(veo_prompts, f, indent=2)
+        
+    if dry_run:
+        logger.info("Dry run enabled: Skipping Veo clip generation")
+        for scene in script.scenes:
+            results.append(SceneClipResult(
+                scene_index=scene.index,
+                clip_path=clips_dir / f"scene_{scene.index:02d}.mp4",
+                success=True,
+                estimated_cost_usd=0.0,
+            ))
+        return results
+
     for scene in script.scenes:
         clip_path = clips_dir / f"scene_{scene.index:02d}.mp4"
         logger.info("Generating clip for scene %d", scene.index)

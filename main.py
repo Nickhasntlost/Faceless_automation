@@ -43,6 +43,16 @@ def parse_args() -> argparse.Namespace:
         help="Skip YouTube upload even when credentials exist.",
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run creative agents but skip expensive media generation APIs (TTS/Veo).",
+    )
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Use deterministic settings (temperature 0) for LLM generations.",
+    )
+    parser.add_argument(
         "--simulate-timeout",
         action="store_true",
         help="Force an API timeout path for quality-gate testing.",
@@ -75,6 +85,8 @@ def main() -> int:
         simulate_timeout=args.simulate_timeout,
         simulate_budget_breach=args.simulate_budget_breach,
         simulate_interrupt=args.simulate_interrupt,
+        dry_run=args.dry_run,
+        deterministic=args.deterministic,
     )
 
     try:
