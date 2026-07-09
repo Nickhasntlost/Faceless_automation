@@ -86,7 +86,8 @@ class ChannelIdentity:
     audience: str
     content_rules: list[str]
     banned_topics: list[str]
-    default_hashtags: list[str]
+    default_hashtags: list[str] = field(default_factory=list)
+    content_angles: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -111,6 +112,7 @@ class Scene:
     narration: str
     visual_prompt: str
     emotional_beat: str = ""
+    hook_type: str = ""
 
 
 @dataclass
@@ -124,6 +126,9 @@ class ScriptPackage:
     scenes: list[Scene]
     full_narration: str
     color_palette: str = ""
+    loop_type: str = ""
+    comment_trigger: str = ""
+    psychology_hook: str = ""
     estimated_script_tokens: int = 0
     validation_warnings: list[str] = field(default_factory=list)
     planned_scenes: list[PlannedScene] = field(default_factory=list)

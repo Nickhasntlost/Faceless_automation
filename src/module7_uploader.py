@@ -50,10 +50,17 @@ def upload_video(
     @with_timeout(max(pipeline_config.api_timeout_seconds, 300), "youtube_upload")
     def _upload() -> str:
         youtube = _get_youtube_service(client_secrets, token_path)
+        # Build description with psychology hook and comment trigger
+        description = script.description
+        if hasattr(script, 'psychology_hook') and script.psychology_hook:
+            description = f"{description}\n\n🧠 Psychology concept: {script.psychology_hook}"
+        if hasattr(script, 'comment_trigger') and script.comment_trigger:
+            description = f"{description}\n\n{script.comment_trigger}"
+
         body = {
             "snippet": {
                 "title": script.title[:100],
-                "description": script.description[:5000],
+                "description": description[:5000],
                 "tags": script.tags[:500],
                 "categoryId": pipeline_config.youtube_category_id,
             },

@@ -1,19 +1,29 @@
 {
-  "niche": "AI and emerging technology",
-  "persona": "Sharp, curious tech explainer — think The Infographics Show meets a tech insider",
-  "tone": "Punchy, conversational, and genuinely curious. Vary sentence length intentionally. Avoid textbook language.",
-  "audience": "Tech-curious viewers aged 18-35 who scroll fast and think faster",
+  "niche": "The psychology behind AI and emerging technology",
+  "persona": "A sharp, credible tech-psychology explainer — like a neuroscientist who also follows every AI news story. Authoritative but accessible. Never dumbs it down, never talks over people.",
+  "tone": "Confident, fast-paced, slightly unsettling when the topic calls for it. Every script should leave the viewer thinking about themselves, not just the technology.",
+  "audience": "Tech-curious viewers aged 18-35 who use AI tools daily but have never stopped to think about how those tools are changing their own thinking and behavior.",
   "content_rules": [
-    "First word of hook must create instant curiosity",
-    "Hook must be a question — never a statement",
-    "One clear insight per Short — no list videos",
-    "End with a loop line that makes viewers rewatch",
-    "Every visual must match flat 2D animation style"
+    "Every video must connect an AI/Tech development to a real, named psychological phenomenon",
+    "Named phenomena only: confirmation bias, cognitive dissonance, the uncanny valley, parasocial relationships, the Dunning-Kruger effect, operant conditioning, the IKEA effect, availability heuristic, social proof, loss aversion, the mere exposure effect, pattern recognition, decision fatigue — use these or other real named concepts",
+    "Never say 'studies show' without naming the specific psychological concept",
+    "Hook must make the viewer feel the psychological effect personally — not just intellectually",
+    "One psychological insight per video — depth over breadth",
+    "End with a question that makes the viewer examine their own behavior with AI",
+    "Never make health claims — psychology of behavior only, not mental health diagnosis"
   ],
   "banned_topics": [
     "crypto price predictions",
     "get rich quick",
-    "unverified health claims"
+    "mental health diagnosis or treatment",
+    "unverified psychological claims",
+    "vague 'studies show' without named concept"
   ],
-  "default_hashtags": ["#AI", "#Tech", "#Shorts"]
+  "content_angles": [
+    "Why your brain [does X] when AI [does Y] — [named psychological effect]",
+    "The [named effect] that makes AI [behavior] feel [human emotion]",
+    "AI companies know about [named psychological principle] — here's how they use it on you",
+    "You think you control AI. [Named effect] says otherwise.",
+    "The psychology reason why [AI development] is more dangerous than it looks"
+  ]
 }

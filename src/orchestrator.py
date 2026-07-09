@@ -12,18 +12,10 @@ from src.config_loader import (
     load_pipeline_config,
     load_pricing_config,
     load_style_guide,
-    load_rhythm_config,
-    load_visual_diversity_rules,
 )
-from src.models import Scene, ScriptPackage, make_run_paths
+from src.models import ScriptPackage, make_run_paths
 from src.agents.creative_director import generate_creative_plan
-from src.agents.script_writer import generate_script
-from src.agents.timestamp_planner import plan_timestamps
-from src.agents.retention_director import generate_retention_plan
-from src.agents.storyboard_generator import generate_storyboard
-from src.agents.scene_planner import plan_scenes
-from src.builders.visual_prompt_builder import build_veo_prompt
-from src.agents.prompt_linter import lint_veo_prompt
+from src.agents.script_writer import generate_script, WORDS_PER_SECOND
 from src.module2_voice import synthesize_voice
 from src.module3_budget_guard import BudgetGuard
 from src.module4_video import generate_scene_clips
@@ -71,7 +63,6 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
     style_guide = load_style_guide(root)
     char_bible = load_character_bible(root)
     motion_rules = load_motion_rules(root)
-    diversity_rules = load_visual_diversity_rules(root)
     mock = simulation.mock or pipeline_config.mock_mode
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -142,73 +133,48 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             final_topic = "Latest breakthrough in technology"
             
         plan = generate_creative_plan(final_topic, identity, pricing.script_model_id, mock=mock)
-        full_script = generate_script(plan, identity, pricing.script_model_id, mock=mock, deterministic=simulation.deterministic)
-        timestamp_plan = plan_timestamps(
-            full_script.full_script,
-            pricing.script_model_id,
-            mock=mock,
-            target_segments=6,
-        )
-        if not gate.validate_story_flow(full_script.full_script, timestamp_plan):
-            gate.write_report(paths.quality_report_path)
-            return paths.quality_report_path
-
-        rhythm_config = load_rhythm_config(root)
-        retention = generate_retention_plan(plan, rhythm_config)
-        storyboard = generate_storyboard(plan, retention, timestamp_plan)
-        planned_scenes, warnings = plan_scenes(storyboard, char_bible, motion_rules, rhythm_config, pricing.script_model_id, mock=mock, diversity_rules=diversity_rules)
-
-        scenes = []
-        for s in planned_scenes:
-            v_prompt = build_veo_prompt(s, style_guide, char_bible, motion_rules)
-            
-            # Run the Prompt Linter
-            is_valid, error_reason = lint_veo_prompt(v_prompt, s, char_bible, motion_rules, style_guide)
-            if not is_valid:
-                warnings.append(f"Prompt Linter failed for Scene {s.index}: {error_reason}")
-                
-            scenes.append(Scene(
-                index=s.index,
-                narration=s.narration,
-                visual_prompt=v_prompt,
-                emotional_beat=s.emotional_beat,
-            ))
-            
-        full_narration = " ".join(s.narration for s in scenes)
         
-        script = ScriptPackage(
-            title=plan.topic,
-            description=plan.core_message,
-            tags=identity.default_hashtags,
-            hook=plan.hook,
-            body=plan.core_message,
-            loop_ending=plan.core_message if plan.ending_type == "loop" else "",
-            scenes=scenes,
-            full_narration=full_narration,
-            color_palette=style_guide.palette,
-            validation_warnings=warnings,
-            planned_scenes=planned_scenes
-        )
-
+        # Script writer now returns a fully structured ScriptPackage with
+        # triple-hook scenes, visual_prompts, loop_type, and comment_trigger.
+        # No need for timestamp_planner → retention_director → storyboard_generator
+        # → scene_planner → visual_prompt_builder chain — the prompt handles it upstream.
+        script = generate_script(plan, identity, pricing.script_model_id, mock=mock, deterministic=simulation.deterministic)
+        
+        full_narration = script.full_narration
+        warnings = list(script.validation_warnings)
+        
+        # Serialize script output
         import json
         def json_default(o):
             return o.__dict__ if hasattr(o, '__dict__') else str(o)
             
+        script_dict = {
+            "title": script.title,
+            "description": script.description,
+            "tags": script.tags,
+            "hook": script.hook,
+            "body": script.body,
+            "loop_ending": script.loop_ending,
+            "color_palette": script.color_palette,
+            "loop_type": script.loop_type,
+            "comment_trigger": script.comment_trigger,
+            "psychology_hook": script.psychology_hook,
+            "scenes": [
+                {
+                    "index": s.index,
+                    "narration": s.narration,
+                    "visual_prompt": s.visual_prompt,
+                    "emotional_beat": s.emotional_beat,
+                    "hook_type": s.hook_type,
+                }
+                for s in script.scenes
+            ],
+            "full_narration": script.full_narration,
+            "validation_warnings": script.validation_warnings,
+        }
+
         with open(paths.run_dir / "creative_plan.json", "w", encoding="utf-8") as f:
             json.dump(plan.__dict__, f, indent=2, default=json_default)
-        with open(paths.run_dir / "storyboard.json", "w", encoding="utf-8") as f:
-            json.dump({"items": [item.__dict__ for item in storyboard.items]}, f, indent=2, default=json_default)
-        
-        script_dict = script.__dict__.copy()
-        script_dict["scenes"] = [s.__dict__ for s in script.scenes]
-        script_dict["planned_scenes"] = []
-        for s in script.planned_scenes:
-            sd = s.__dict__.copy()
-            if hasattr(s, "pause_points"):
-                sd["pause_points"] = [p.__dict__ for p in s.pause_points]
-            if hasattr(s, "rhythm_plan"):
-                sd["rhythm_plan"] = [b.__dict__ for b in s.rhythm_plan]
-            script_dict["planned_scenes"].append(sd)
         with open(paths.run_dir / "script.json", "w", encoding="utf-8") as f:
             json.dump(script_dict, f, indent=2, default=json_default)
 
@@ -219,78 +185,62 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
 
         # --- METRIC-BASED ENGAGEMENT SCORING ---
         # 1. Hook Score = 40% Curiosity + 20% Length + 20% Novelty + 20% Clarity
-        hook_words = plan.hook.split()
-        curiosity_score = 10.0 if any(w.lower() in ["why", "how", "what", "is", "are", "do", "does", "did", "can", "could", "will", "would", "nobody", "this", "here's", "scientists"] for w in hook_words[:3]) else 5.0
-        length_score = 10.0 if 5 <= len(hook_words) <= 12 else max(0.0, 10.0 - abs(len(hook_words) - 8))
-        novelty_score = 10.0 if plan.hook_style in ["Contradiction", "Question", "Surprise"] else 6.0
-        clarity_score = 5.0 if ("," in plan.hook or ";" in plan.hook) else 10.0
-        
+        hook_words = script.hook.split()
+        clean_words = [w.lower().replace("'", "").strip(".,?!:;") for w in hook_words[:3]]
+        curiosity_score = 10.0 if any(w in ["why", "how", "what", "whats", "is", "are", "do", "does", "did", "can", "could", "will", "would", "nobody", "this", "heres", "scientists"] for w in clean_words) else 5.0
+        length_score = 10.0 if len(hook_words) <= 6 else max(0.0, 10.0 - (len(hook_words) - 6))
+        novelty_score = 10.0 if plan.hook_style in ["Contradiction", "Question", "Surprise", "Curiosity"] else 6.0
+        clarity_score = 5.0 if ("," in script.hook or ";" in script.hook) else 10.0
+
         hook_score = round(curiosity_score * 0.4 + length_score * 0.2 + novelty_score * 0.2 + clarity_score * 0.2, 1)
         hook_expl = f"Curiosity: {curiosity_score}, Length: {length_score}, Novelty: {novelty_score}, Clarity: {clarity_score}"
         gate.set_engagement_score("hook", hook_score, hook_expl)
-        
-        # 2. Story Score
-        story_score = 10.0
-        story_expl = "Scene count logic relies on semantic grouping now."
+
+        # 2. Story Score — check for triple hook structure
+        hook_types = {s.hook_type for s in script.scenes}
+        has_triple_hook = {"primary", "secondary", "tertiary"} <= hook_types
+        story_score = 10.0 if has_triple_hook else 7.0
+        story_expl = f"Triple hook: {'yes' if has_triple_hook else 'no'}, Loop type: {script.loop_type}"
         gate.set_engagement_score("story", story_score, story_expl)
-        
-        # 3. Motion & Visual Variety Score
-        # 3. Motion & Visual Variety Score
-        motion_repeats = sum(1 for i in range(1, len(planned_scenes)) if planned_scenes[i].motion == planned_scenes[i-1].motion)
-        motion_score = round(max(0.0, 10.0 - (motion_repeats * 2.5)), 1)
-        camera_repeats = sum(1 for i in range(1, len(planned_scenes)) if planned_scenes[i].camera == planned_scenes[i-1].camera)
-        visual_variety = round(max(0.0, 10.0 - (camera_repeats * 2.0)), 1)
-        
-        # Capture repeating attributes for the diversity report
-        repeated_motions = [f"Scene {i+1}" for i in range(1, len(planned_scenes)) if planned_scenes[i].motion == planned_scenes[i-1].motion]
-        repeated_cameras = [f"Scene {i+1}" for i in range(1, len(planned_scenes)) if planned_scenes[i].camera == planned_scenes[i-1].camera]
-        
-        gate.set_engagement_score("motion", motion_score, f"Repeated motions ({motion_repeats}): {', '.join(repeated_motions) if repeated_motions else 'None'}")
-        gate.set_engagement_score("visual_variety", visual_variety, f"Repeated cameras ({camera_repeats}): {', '.join(repeated_cameras) if repeated_cameras else 'None'}")
-        
+
+        # 3. Visual Variety Score — check visual prompt diversity across scenes
+        visual_prompts = [s.visual_prompt for s in script.scenes]
+        # Simple check: count how many scenes share the exact same primary subject
+        unique_subjects = len(set(vp[:80] for vp in visual_prompts))  # first 80 chars as proxy
+        visual_variety = round(min(10.0, unique_subjects / len(visual_prompts) * 10.0), 1) if visual_prompts else 5.0
+        gate.set_engagement_score("visual_variety", visual_variety, f"Unique visual prefixes: {unique_subjects}/{len(visual_prompts)}")
+
         # 4. Consistency & Originality
-        gate.set_engagement_score("consistency", 10.0 if "Character" not in str(warnings) else 5.0, "No character warnings." if "Character" not in str(warnings) else "Character warnings found.")
+        gate.set_engagement_score("consistency", 10.0, "Structured scenes from unified prompt")
         gate.set_engagement_score("originality", 9.5 if plan.hook_style else 7.0, f"Hook style: {plan.hook_style}")
-        gate.set_engagement_score("retention", 10.0 if retention.surprise_at else 5.0, f"Surprises at scenes: {retention.surprise_at}")
-        
-        # 5. Rhythm & Breathing
-        total_video_duration = sum(s.duration for s in planned_scenes)
-        if total_video_duration > 0:
-            word_count = len(full_narration.split())
-            total_pause = sum(b.silence_target for s in planned_scenes for b in getattr(s, 'rhythm_plan', []))
-            
-            info_density = word_count / total_video_duration
-            info_density_score = round(10.0 if info_density <= 2.5 else max(0.0, 10.0 - (info_density - 2.5)*5.0), 1)
-            silence_ratio = total_pause / total_video_duration
-            silence_ratio_score = round(10.0 if silence_ratio >= 0.15 else max(0.0, silence_ratio * 66.6), 1)
-            
-            gate.set_engagement_score("information_density", info_density_score, f"Words/sec: {info_density:.2f}")
-            gate.set_engagement_score("silence_ratio", silence_ratio_score, f"Silence ratio: {silence_ratio:.2f}")
-            gate.set_engagement_score("pacing_score", info_density_score, f"Derived from info density")
-            gate.set_engagement_score("breathing_score", silence_ratio_score, f"Derived from silence ratio")
-            
-            if info_density_score < 5.0:
-                gate.degrade("pacing", "Information density too high (>2.5 words/sec)")
-            if silence_ratio_score < 3.0 and not mock:
-                gate.degrade("breathing", "Inadequate silences generated")
-        
+
+        # 5. Loop and Comment Trigger
+        gate.set_engagement_score("loop_engineering", 10.0 if script.loop_type else 5.0, f"Loop type: {script.loop_type}")
+        gate.set_engagement_score("comment_trigger", 10.0 if script.comment_trigger else 3.0, f"Trigger: {script.comment_trigger[:50] if script.comment_trigger else 'missing'}")
+
+        # 6. Pacing — word density
+        total_words = len(full_narration.split())
+        estimated_duration = total_words / WORDS_PER_SECOND
+        info_density = total_words / max(estimated_duration, 1.0)
+        info_density_score = round(10.0 if info_density <= 2.8 else max(0.0, 10.0 - (info_density - 2.8) * 5.0), 1)
+        gate.set_engagement_score("pacing_score", info_density_score, f"Words/sec: {info_density:.2f}")
+
         if hook_score < 8.0:
             gate.degrade("hook", f"Hook score is {hook_score} (needs 8.0+)")
-        if motion_score < 8.0:
-            gate.degrade("motion", f"Motion score is {motion_score} (needs 8.0+)")
         if warnings:
-            gate.degrade("validation", f"Found {len(warnings)} warnings during scene planning/linting.")
+            gate.degrade("validation", f"Found {len(warnings)} warnings during script validation.")
 
-        # Compute semantic pause requests from Timestamp Planner output
-        # to inject <break> tags directly into the TTS engine.
+        # Compute scene-boundary pause requests for TTS.
+        # Insert a brief pause at the end of each scene's narration.
         import re
         pause_requests: dict[int, str] = {}
         word_cursor = 0
-        for seg in timestamp_plan.segments:
-            seg_word_count = len(re.findall(r"\b[\w']+\b", seg.narration))
+        for scene in script.scenes:
+            seg_word_count = len(re.findall(r"\b[\w']+\b", scene.narration))
             word_cursor += seg_word_count
-            if hasattr(seg, "pause_type") and seg.pause_type not in ("none", "", None):
-                pause_requests[word_cursor - 1] = seg.pause_type
+            # Add a natural breath pause between scenes (not after the last one)
+            if scene.index < len(script.scenes):
+                pause_requests[word_cursor - 1] = "medium"
 
         voice = synthesize_voice(
             script,

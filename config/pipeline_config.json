@@ -9,7 +9,7 @@
   "budget_buffer_usd": 50.0,
   "budget_store_path": "data/budget_counter.json",
   "output_dir": "output",
-  "upload_privacy_status": "private",
+  "upload_privacy_status": "public",
   "youtube_category_id": "28",
   "tts_voice_name": "en-US-Neural2-F",
   "tts_language_code": "en-US",

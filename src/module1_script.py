@@ -85,24 +85,27 @@ def _parse_script_payload(payload: dict, identity: ChannelIdentity) -> ScriptPac
         Scene(
             index=int(item["index"]),
             narration=str(item["narration"]).strip(),
-            visual_prompt=str(item["visual_prompt"]).strip(),
-            emotional_beat=str(item.get("emotional_beat", "")).strip(),
+            visual_prompt=str(item.get("visual_prompt", "")).strip(),
+            emotional_beat=str(item.get("emotional_beat", item.get("hook_type", ""))).strip(),
+            hook_type=str(item.get("hook_type", "")).strip(),
         )
-        for item in payload["scenes"]
+        for item in payload.get("scenes", [])
     ]
     scenes.sort(key=lambda s: s.index)
     full_narration = " ".join(scene.narration for scene in scenes)
     tags = payload.get("tags") or identity.default_hashtags
     return ScriptPackage(
-        title=str(payload["title"]).strip(),
-        description=str(payload["description"]).strip(),
+        title=str(payload.get("title", "")).strip(),
+        description=str(payload.get("description", "")).strip(),
         tags=[str(t).strip() for t in tags],
-        hook=str(payload["hook"]).strip(),
-        body=str(payload["body"]).strip(),
-        loop_ending=str(payload["loop_ending"]).strip(),
+        hook=str(payload.get("hook", "")).strip(),
+        body=str(payload.get("body", "")).strip(),
+        loop_ending=str(payload.get("loop_ending", "")).strip(),
         scenes=scenes,
         full_narration=full_narration,
         color_palette=str(payload.get("color_palette", "")).strip(),
+        loop_type=str(payload.get("loop_type", "")).strip(),
+        comment_trigger=str(payload.get("comment_trigger", "")).strip(),
     )
 
 
@@ -160,12 +163,15 @@ def _mock_script(identity: ChannelIdentity, scene_count: int) -> ScriptPackage:
         "body": "Teams are replacing manual content pipelines with budget-guarded automation.",
         "loop_ending": "So... did AI replace your workflow yet?",
         "color_palette": color_palette,
+        "loop_type": "question",
+        "comment_trigger": "Does your job use AI yet? Tell me below.",
         "scenes": [
             {
                 "index": s.index,
                 "narration": s.narration,
                 "visual_prompt": s.visual_prompt,
                 "emotional_beat": s.emotional_beat,
+                "hook_type": s.emotional_beat,
             }
             for s in scenes
         ],
@@ -190,12 +196,15 @@ def _script_to_dict(script: ScriptPackage) -> dict:
         "body": script.body,
         "loop_ending": script.loop_ending,
         "color_palette": script.color_palette,
+        "loop_type": script.loop_type,
+        "comment_trigger": script.comment_trigger,
         "scenes": [
             {
                 "index": s.index,
                 "narration": s.narration,
                 "visual_prompt": s.visual_prompt,
                 "emotional_beat": s.emotional_beat,
+                "hook_type": s.hook_type,
             }
             for s in script.scenes
         ],
