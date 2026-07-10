@@ -13,7 +13,7 @@ logger = logging.getLogger("shorts_pipeline.script")
 
 def _build_prompt(identity: ChannelIdentity, scene_min: int, scene_max: int) -> str:
     return f"""You are a viral YouTube Shorts scriptwriter specializing in AI/Tech content.
-Your benchmark is The Infographics Show — punchy, question-led, animated explainer style.
+Your benchmark is high-retention storytelling — punchy, question-led, animated explainer style.
 
 Channel identity:
 - Niche: {identity.niche}
@@ -41,10 +41,9 @@ SCRIPT RULES (non-negotiable):
    Scene 5: Payoff (the answer to the hook question)
    Scene 6 (optional): Loop (line that connects back to the hook)
 
-4. VISUAL STYLE = flat 2D animation aesthetic. Every visual_prompt must include:
-   - "flat 2D animation style, bold black outlines, limited color palette"
-   - "The Infographics Show aesthetic, clean motion graphics"
-   - "9:16 vertical frame, no text overlays, no captions"
+4. VISUAL STYLE = minimalist vector art. Every visual_prompt must include:
+   - "minimalist vector art, [color_palette], clean motion graphics"
+   - "vertical portrait orientation"
    - A specific subject/scene relevant to the narration
    - Camera/movement instruction (slow zoom in, pan left, static wide shot, etc.)
    
@@ -54,7 +53,7 @@ SCRIPT RULES (non-negotiable):
    NEVER generate: live action footage, photorealistic renders, real people, news footage, stock photo look.
 
 5. NEGATIVE PROMPT: End every visual_prompt with this exact string:
-   "| negative: photorealistic, live action, talking heads, text overlays, captions, watermarks, blurry"
+   "| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
 
 Return ONLY valid JSON:
 {{
@@ -71,7 +70,7 @@ Return ONLY valid JSON:
       "emotional_beat": "hook|tension|surprise|proof|payoff|loop",
       "narration": "max 2 sentences, max 10 words each, ends on strong word",
       "word_count": 0,
-      "visual_prompt": "flat 2D animation style, bold black outlines, [color_palette], The Infographics Show aesthetic, clean motion graphics, 9:16 vertical frame, [specific scene description], [camera movement] | negative: photorealistic, live action, talking heads, text overlays, captions, watermarks, blurry"
+      "visual_prompt": "minimalist vector art, [color_palette], clean motion graphics, vertical portrait orientation, [specific scene description], [camera movement] | negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
     }}
   ]
 }}
@@ -145,12 +144,12 @@ def _mock_script(identity: ChannelIdentity, scene_count: int) -> ScriptPackage:
                 index=idx,
                 narration=narration,
                 visual_prompt=(
-                    f"flat 2D animation style, bold black outlines, {color_palette} color palette, "
-                    f"The Infographics Show aesthetic, clean motion graphics, "
-                    f"9:16 vertical frame, futuristic AI interface scene {idx}, "
+                    f"minimalist vector art, {color_palette} color palette, "
+                    f"clean motion graphics, vertical portrait orientation, "
+                    f"futuristic AI interface scene {idx}, "
                     f"slow zoom in "
-                    f"| negative: photorealistic, live action, talking heads, text overlays, "
-                    f"captions, watermarks, blurry"
+                    f"| negative: channel logos, text, typography, words, branding, watermarks, "
+                    f"photorealistic, live action, talking heads"
                 ),
                 emotional_beat=beat,
             )

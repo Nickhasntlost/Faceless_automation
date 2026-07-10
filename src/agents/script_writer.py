@@ -22,94 +22,64 @@ def estimate_spoken_duration(text: str) -> float:
     return round(len(words) / WORDS_PER_SECOND, 1)
 
 
-def _validate_script(scenes: list[Scene], script_data: dict) -> tuple[list[str], list[str]]:
-    """Validate the structured script. Returns (errors, warnings)."""
+def _validate_script(scenes: list, script_data: dict, config: dict) -> tuple[list, list]:
     errors = []
     warnings = []
-
-    # Hard: must have 6 scenes
-    if len(scenes) != 6:
-        errors.append(f"Script has {len(scenes)} scenes — must have exactly 6")
-
-    # Hard: word count per scene
+    
+    scene_min = config.get("scene_count_min", 4)
+    scene_max = config.get("scene_count_max", 5)
+    
+    # HARD: scene count
+    if len(scenes) < scene_min:
+        errors.append(f"Too few scenes: {len(scenes)} — minimum is {scene_min}")
+    if len(scenes) > scene_max:
+        errors.append(f"Too many scenes: {len(scenes)} — maximum is {scene_max}. Never generate 6 scenes.")
+    
+    # HARD: hook scene word count
+    hook = next((s for s in scenes if s.index == 1), None)
+    if hook:
+        hook_words = len(hook.narration.split())
+        if hook_words > 7:  # Prompt asks for 5, enforce 7 as hard limit
+            errors.append(f"Scene 1 hook is {hook_words} words — max is 5 (strict)")
+    
+    # HARD: per-scene word count
     for scene in scenes:
+        limit = 18 if scene.index == len(scenes) else 13
+        if scene.index == 1:
+            limit = 7
         words = len(scene.narration.split())
-        limit = SCENE_WORD_LIMITS.get(scene.index, 12)
-        # Give a +2 word tolerance for model counting errors
-        if words > limit + 2:
-            errors.append(f"Scene {scene.index}: {words} words exceeds {limit} word limit (with +2 tolerance)")
-        elif words > limit:
-            warnings.append(f"Scene {scene.index}: {words} words is slightly over the {limit} word target")
-
-    # Hard: hook scene (index 1) must be max 6 words (+2 tolerance)
-    hook_scene = next((s for s in scenes if s.index == 1), None)
-    if hook_scene and len(hook_scene.narration.split()) > 8:
-        errors.append(f"Scene 1 hook is {len(hook_scene.narration.split())} words — max 6 (+2 tolerance)")
-
-    # Hard: total word count 60-72
+        if words > limit:
+            errors.append(f"Scene {scene.index}: {words} words exceeds {limit} word hard limit")
+    
+    # HARD: total word budget
     total_words = sum(len(s.narration.split()) for s in scenes)
-    if total_words > 72:
-        errors.append(f"Total word count {total_words} exceeds 72 max")
-
-    # Hard: comment_trigger field must exist
+    if total_words < 40:
+        errors.append(f"Total word count {total_words} is too low — minimum 40 words (target 50-65)")
+    if total_words > 70:
+        errors.append(f"Total word count {total_words} exceeds 70 — video will be too long. Target 50-65 words.")
+    
+    # HARD: required fields
     if not script_data.get("comment_trigger"):
         errors.append("Missing comment_trigger field")
-
-    # Hard: psychology_hook must be present and non-empty
-    if not script_data.get("psychology_hook"):
-        errors.append("Missing psychology_hook — every script must reference a named psychological phenomenon")
-
-    # Hard: loop_type field must exist and be valid
-    loop_type = script_data.get("loop_type", "")
-    if not loop_type:
+    if not script_data.get("loop_type"):
         errors.append("Missing loop_type field")
-    elif loop_type not in ("question", "visual", "statement"):
-        errors.append(f"Invalid loop_type '{loop_type}' — must be question, visual, or statement")
-
-    # Hard: duration check
-    full_narration = " ".join(s.narration for s in scenes)
-    duration = estimate_spoken_duration(full_narration)
-    if not MIN_DURATION_SECONDS <= duration <= MAX_DURATION_SECONDS:
-        errors.append(
-            f"Script duration {duration:.1f}s outside {MIN_DURATION_SECONDS:.0f}-{MAX_DURATION_SECONDS:.0f}s range"
-        )
-
-    # Warning: scene 3 should be secondary hook
-    scene_3 = next((s for s in scenes if s.index == 3), None)
-    if scene_3 and scene_3.hook_type not in ("secondary", "tension"):
-        warnings.append("Scene 3 should be secondary hook or tension for retention")
-
-    # Warning: visual loop check (Scene 1 vs Scene 6 shared nouns)
-    if len(scenes) == 6:
-        scene_1 = next((s for s in scenes if s.index == 1), None)
-        scene_6 = next((s for s in scenes if s.index == 6), None)
-        if scene_1 and scene_6:
-            # Extract significant nouns (words > 3 chars, lowered)
-            vp1_words = set(w.lower() for w in re.findall(r'\b[a-zA-Z]{4,}\b', scene_1.visual_prompt))
-            vp6_words = set(w.lower() for w in re.findall(r'\b[a-zA-Z]{4,}\b', scene_6.visual_prompt))
-            # Remove common style words that appear in every prompt
-            style_words = {
-                "flat", "animation", "style", "bold", "black", "outlines", "infographics",
-                "show", "aesthetic", "clean", "motion", "graphics", "vertical", "frame",
-                "text", "overlays", "captions", "watermarks", "blurry", "negative",
-                "photorealistic", "live", "action", "talking", "heads", "color", "palette",
-            }
-            vp1_nouns = vp1_words - style_words
-            vp6_nouns = vp6_words - style_words
-            shared = vp1_nouns & vp6_nouns
-            if not shared:
-                warnings.append(
-                    "Visual loop weak: Scene 1 and Scene 6 visual_prompts share no subject nouns. "
-                    "Loop effect may not work visually."
-                )
-
-    # Warning: hook must appear in narration
-    hook = script_data.get("hook", "")
-    if hook and scenes:
-        scene_1 = next((s for s in scenes if s.index == 1), None)
-        if scene_1 and hook.strip() not in scene_1.narration:
-            warnings.append("Hook text doesn't match Scene 1 narration verbatim")
-
+    if not script_data.get("psychology_hook"):
+        errors.append("Missing psychology_hook — must reference a named psychological phenomenon")
+    
+    # WARNING: loop visual check
+    if len(scenes) >= 2:
+        scene1_words = set(scenes[0].visual_prompt.lower().split())
+        scene_last_words = set(scenes[-1].visual_prompt.lower().split())
+        common = scene1_words & scene_last_words - {"a", "the", "of", "in", "on", "with", "and", "flat", "vector", "animation", "style", "bold", "black", "outlines", "clean", "motion", "graphics", "vertical", "portrait", "orientation", "negative"}
+        if len(common) < 2:
+            warnings.append("Scene 1 and final scene share no common subject — loop effect may be broken")
+    
+    # WARNING: scene 3 hook type (for 5-scene scripts)
+    if len(scenes) == 5:
+        scene_3 = next((s for s in scenes if s.index == 3), None)
+        if scene_3 and scene_3.hook_type not in ["secondary", "tension"]:
+            warnings.append("Scene 3 should be secondary hook or tension for optimal retention")
+    
     return errors, warnings
 
 
@@ -228,46 +198,83 @@ Proven comment triggers — use one per video:
 NEVER use: "Like and subscribe", "Follow for more", "Hit the bell" — these tank retention.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SCENE STRUCTURE (6 scenes, ~30 seconds total)
+TIMING & SCENE RULES (hard limits — violations cause retry)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Scene 1 — PRIMARY HOOK (max 6 words narration)
-Scene 2 — TENSION (why this matters RIGHT NOW, max 12 words)
-Scene 3 — SECONDARY HOOK / TWIST (unexpected angle, max 12 words)
-Scene 4 — PROOF (one concrete fact or example, max 12 words)
-Scene 5 — TERTIARY HOOK / STAKES RAISE (max 10 words)
-Scene 6 — PAYOFF + COMMENT TRIGGER (answer + engagement question, max 15 words)
+TARGET VIDEO LENGTH: 21-28 seconds. Never shorter. Never longer.
 
-Total word budget: 60-72 words across all scenes.
-At 150 WPM = 24-29 seconds of speech = ~30 second final video.
+SCENE COUNT: Generate exactly 4 OR 5 scenes. Never 3. Never 6. Never 7.
+- 4 scenes × 6 seconds = 24 seconds
+- 5 scenes × 6 seconds = 30 seconds
+Both are acceptable. Choose based on how much the topic needs.
+Simple topics = 4 scenes. Complex topics = 5 scenes.
+
+WORD BUDGET:
+- Total script: 50-65 words across ALL scenes combined
+- At 150 WPM, 50 words = 20 seconds, 65 words = 26 seconds
+- This is the ONLY way to hit the 21-28 second target
+- Scene 1 (hook): max 5 words (WE WILL COUNT THEM AND FAIL IF MORE)
+- Scenes 2-4: max 10 words each
+- Scene 5 (payoff, if used): max 15 words including comment trigger
+
+SPEAKING PACE TARGET: 150-170 words per minute
+- Write short, punchy sentences that naturally speak fast
+- No long explanatory sentences — one idea, one sentence, done
+- If a sentence takes more than 4 seconds to say out loud, it's too long
+
+TIMING CHECK (do this before outputting JSON):
+1. Count total words across all scene narrations
+2. Divide by 150 (words per minute) × 60 = speaking seconds
+3. If result is outside 20-28 seconds → rewrite until it fits
+4. Never pad with filler words to hit a minimum
+5. Never cut important content to hit a maximum — restructure instead
+
+SCENE STRUCTURE FOR 4 SCENES:
+Scene 1 — PRIMARY HOOK (max 5 words, question)
+Scene 2 — TENSION + SECONDARY HOOK (max 10 words)
+Scene 3 — PROOF + PSYCHOLOGY CONCEPT (max 10 words)
+Scene 4 — PAYOFF + COMMENT TRIGGER (max 15 words)
+
+SCENE STRUCTURE FOR 5 SCENES:
+Scene 1 — PRIMARY HOOK (max 5 words, question)
+Scene 2 — TENSION (max 10 words)
+Scene 3 — SECONDARY HOOK / TWIST (max 10 words)
+Scene 4 — PROOF + PSYCHOLOGY CONCEPT (max 10 words)
+Scene 5 — PAYOFF + COMMENT TRIGGER (max 15 words)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WRITING RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- Max 12 words per scene (except Scene 6: max 15)
-- Every sentence ends on a STRONG word (never: "and", "the", "it", "a")
-- Write for AUDIO — short sentences, natural rhythm, punchy delivery
-- One idea per scene. Never explain more than one concept per scene.
-- No jargon unless immediately explained in the same scene
-- Every word must earn its place — if removing it doesn't lose meaning, remove it
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VISUAL STYLE (flat 2D animation — The Infographics Show aesthetic)
+VISUAL STYLE (minimalist vector art)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Pick ONE color palette at the start. Reference it in every scene.
 Every visual_prompt must include:
-- "flat 2D animation style, bold black outlines, [color palette]"
-- "The Infographics Show aesthetic, clean motion graphics"
-- "9:16 vertical frame, no text overlays, no captions in frame"
+- "minimalist vector art, [color palette], clean motion graphics"
+- "vertical portrait orientation"
 - A specific subject relevant to the narration
 - One camera movement (slow zoom in / pan left / static wide / quick push in)
 
-Scene 1 visual must mirror Scene 6 visual for the loop effect.
+VISUAL VARIETY RULE (hard requirement):
+Each scene MUST depict a completely different visual subject.
+No two scenes can show the same object, character, or setting.
+
+Mandatory variety across 5 scenes — use this rotation:
+Scene 1: A PERSON or CHARACTER reacting to something
+Scene 2: A DEVICE or INTERFACE (phone, screen, computer)  
+Scene 3: A BRAIN or MIND visualization (abstract, symbolic)
+Scene 4: A CROWD or SOCIETY scene (multiple people, social setting)
+Scene 5: Same CHARACTER as Scene 1 but different emotional state (loop)
+
+The visual_prompt for each scene must open with its subject:
+Scene 1: "Cartoon character..." 
+Scene 2: "Floating smartphone..."
+Scene 3: "Glowing brain..."
+Scene 4: "Crowd of silhouettes..."
+Scene 5: "Same cartoon character..."
+
+If two scenes open with the same noun — reject and retry.
 
 Negative prompt on every visual (append to end):
-"| negative: photorealistic, live action, talking heads, text overlays, captions, watermarks, blurry, stock photo"
+"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT FORMAT
@@ -291,7 +298,7 @@ Return ONLY valid JSON:
       "hook_type": "primary|secondary|tertiary|tension|proof|payoff",
       "narration": "max 12 words, ends on strong word",
       "word_count": 0,
-      "visual_prompt": "flat 2D animation style, bold black outlines, [color_palette], The Infographics Show aesthetic, clean motion graphics, 9:16 vertical frame, [specific scene], [camera movement] | negative: photorealistic, live action, talking heads, text overlays, captions, watermarks, blurry"
+      "visual_prompt": "minimalist vector art, [color_palette], clean motion graphics, vertical portrait orientation, [specific scene], [camera movement] | negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
     }}
   ]
 }}
@@ -340,10 +347,10 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             emotional_beat="hook",
             narration="ChatGPT just passed the Turing test.",
             visual_prompt=(
-                f"flat 2D animation style, bold black outlines, {color_palette} color palette, "
-                f"The Infographics Show aesthetic, clean motion graphics, "
-                f"9:16 vertical frame, cartoon robot facing a human silhouette across a table, slow zoom in "
-                f"| negative: photorealistic, live action, text overlays"
+                f"minimalist vector art, {color_palette} color palette, "
+                f"clean motion graphics, vertical portrait orientation, "
+                f"cartoon robot facing a human silhouette across a table, slow zoom in "
+                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
         Scene(
@@ -352,10 +359,10 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             emotional_beat="tension",
             narration="Every major lab knew this was coming.",
             visual_prompt=(
-                f"flat 2D animation style, bold black outlines, {color_palette} color palette, "
-                f"The Infographics Show aesthetic, clean motion graphics, "
-                f"9:16 vertical frame, boardroom of cartoon scientists looking at glowing screens, pan left "
-                f"| negative: photorealistic, live action, text overlays"
+                f"minimalist vector art, {color_palette} color palette, "
+                f"clean motion graphics, vertical portrait orientation, "
+                f"boardroom of cartoon scientists looking at glowing screens, pan left "
+                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
         Scene(
@@ -364,10 +371,10 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             emotional_beat="surprise",
             narration="But here's what nobody talks about.",
             visual_prompt=(
-                f"flat 2D animation style, bold black outlines, {color_palette} color palette, "
-                f"The Infographics Show aesthetic, clean motion graphics, "
-                f"9:16 vertical frame, cartoon brain with question marks floating around it, quick push in "
-                f"| negative: photorealistic, live action, text overlays"
+                f"minimalist vector art, {color_palette} color palette, "
+                f"clean motion graphics, vertical portrait orientation, "
+                f"cartoon brain with question marks floating around it, quick push in "
+                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
         Scene(
@@ -376,10 +383,10 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             emotional_beat="proof",
             narration="Anthropomorphism makes you trust it anyway.",
             visual_prompt=(
-                f"flat 2D animation style, bold black outlines, {color_palette} color palette, "
-                f"The Infographics Show aesthetic, clean motion graphics, "
-                f"9:16 vertical frame, cartoon human shaking hands with robot, warm glow effect, static wide "
-                f"| negative: photorealistic, live action, text overlays"
+                f"minimalist vector art, {color_palette} color palette, "
+                f"clean motion graphics, vertical portrait orientation, "
+                f"cartoon human shaking hands with robot, warm glow effect, static wide "
+                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
         Scene(
@@ -388,10 +395,10 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             emotional_beat="stakes",
             narration="And that reflex? Companies are exploiting it.",
             visual_prompt=(
-                f"flat 2D animation style, bold black outlines, {color_palette} color palette, "
-                f"The Infographics Show aesthetic, clean motion graphics, "
-                f"9:16 vertical frame, corporate building with robot logo, shadowy figures inside, slow zoom out "
-                f"| negative: photorealistic, live action, text overlays"
+                f"minimalist vector art, {color_palette} color palette, "
+                f"clean motion graphics, vertical portrait orientation, "
+                f"corporate building with robot logo, shadowy figures inside, slow zoom out "
+                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
         Scene(
@@ -400,10 +407,10 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             emotional_beat="payoff",
             narration="So next time AI feels human — that's not magic. That's anthropomorphism. Are you okay with that?",
             visual_prompt=(
-                f"flat 2D animation style, bold black outlines, {color_palette} color palette, "
-                f"The Infographics Show aesthetic, clean motion graphics, "
-                f"9:16 vertical frame, same cartoon robot from scene 1 now smiling warmly at viewer, slow zoom in "
-                f"| negative: photorealistic, live action, text overlays"
+                f"minimalist vector art, {color_palette} color palette, "
+                f"clean motion graphics, vertical portrait orientation, "
+                f"same cartoon robot from scene 1 now smiling warmly at viewer, slow zoom in "
+                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
     ]
@@ -476,6 +483,7 @@ def _generate_single_script(
     identity: ChannelIdentity,
     model_id: str,
     deterministic: bool = False,
+    pipeline_config: dict = None,
 ) -> ScriptPackage:
     from google import genai
     from google.genai import types
@@ -508,7 +516,7 @@ def _generate_single_script(
     script = _parse_script_payload(payload, identity)
 
     # Validate with the new structured validator
-    errors, warnings = _validate_script(script.scenes, payload)
+    errors, warnings = _validate_script(script.scenes, payload, pipeline_config or {})
     if errors:
         raise ValueError(f"Script validation errors: {'; '.join(errors)}")
 
@@ -522,6 +530,7 @@ def generate_script(
     model_id: str,
     mock: bool = False,
     deterministic: bool = False,
+    pipeline_config: dict = None,
 ) -> ScriptPackage:
     if mock:
         logger.info('Generating mock triple-hook script')
@@ -530,10 +539,10 @@ def generate_script(
     best_script = None
     best_score = -1.0
 
-    for attempt in range(1, 4):
+    for attempt in range(1, 6):
         logger.info("Generating script (Attempt %d)...", attempt)
         try:
-            script = _generate_single_script(plan, identity, model_id, deterministic)
+            script = _generate_single_script(plan, identity, model_id, deterministic, pipeline_config)
             score = evaluate_script_metrics(script)
             logger.info("Attempt %d scored %.1f.", attempt, score)
 
@@ -551,4 +560,4 @@ def generate_script(
         logger.info("All attempts completed. Returning best attempt with score %.1f.", best_score)
         return best_script
 
-    raise RuntimeError("Failed to generate a valid script after 3 attempts.")
+    raise RuntimeError("Failed to generate a valid script after 5 attempts.")

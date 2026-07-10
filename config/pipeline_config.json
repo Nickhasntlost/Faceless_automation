@@ -1,7 +1,9 @@
 {
-  "scene_count_min": 5,
-  "scene_count_max": 6,
+  "scene_count_min": 4,
+  "scene_count_max": 5,
   "clip_duration_seconds": 6,
+  "target_video_duration_min": 18,
+  "target_video_duration_max": 30,
   "video_resolution": "720p",
   "aspect_ratio": "9:16",
   "budget_threshold_usd": 250.0,

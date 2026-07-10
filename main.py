@@ -2,14 +2,34 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
 
-load_dotenv()
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+def load_secrets() -> None:
+    """Load secrets from Cloud Run environment or local .env file."""
+    if os.environ.get("K_SERVICE"):
+        # Running on Cloud Run — secrets arrive as env vars via --set-secrets.
+        # Materialize the YouTube OAuth token (needed as a file by module7_uploader)
+        # from its raw-JSON env var, since Cloud Run --set-secrets only injects
+        # values as env vars, not files, for this job configuration.
+        token_json = os.environ.get("YOUTUBE_TOKEN_JSON")
+        if token_json:
+            creds_dir = ROOT / "credentials"
+            creds_dir.mkdir(parents=True, exist_ok=True)
+            (creds_dir / "token.json").write_text(token_json, encoding="utf-8")
+    else:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+
+
+load_secrets()
 
 from src.orchestrator import SimulationFlags, run_pipeline
 from src.utils.encoding import read_json

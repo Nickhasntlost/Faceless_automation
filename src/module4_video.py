@@ -39,14 +39,14 @@ def _mock_clip(scene_index: int, clip_path: Path, duration: int) -> None:
 
 def _augment_veo_prompt(visual_prompt: str, scene_index: int, total_scenes: int) -> str:
     """Enforce style consistency and technical requirements on every Veo prompt."""
-    style_anchor = "flat 2D animation style, bold black outlines, The Infographics Show aesthetic"
-    technical = "9:16 vertical orientation, 720p, smooth motion"
+    style_anchor = "minimalist vector art, clean motion graphics"
+    technical = "vertical portrait orientation, 720p, smooth motion"
 
     if "| negative:" in visual_prompt:
         positive, negative = visual_prompt.split("| negative:", 1)
     else:
         positive = visual_prompt
-        negative = "photorealistic, live action, talking heads, text overlays, captions, watermarks, blurry"
+        negative = "channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
 
     if style_anchor.split(",")[0] not in positive:
         positive = f"{style_anchor}, {positive.strip()}"
@@ -94,6 +94,7 @@ def _generate_single_clip(
             project=os.environ["GOOGLE_CLOUD_PROJECT"],
             location=os.environ.get("VERTEX_LOCATION", "us-central1")
         )
+        logger.info("Calling Veo API for scene %d with duration_seconds=%d", scene.index, pipeline_config.clip_duration_seconds)
         operation = client.models.generate_videos(
             model=pricing.veo_model_id,
             prompt=_augment_veo_prompt(scene.visual_prompt, scene.index, total_scenes),
@@ -110,6 +111,11 @@ def _generate_single_clip(
             time.sleep(pipeline_config.veo_poll_interval_seconds)
             elapsed += pipeline_config.veo_poll_interval_seconds
             operation = client.operations.get(operation=operation)
+
+        if getattr(operation, 'error', None):
+            raise RuntimeError(f"Veo API error: {operation.error}")
+        if not getattr(operation, 'result', None) or not getattr(operation.result, 'generated_videos', None):
+            raise RuntimeError("Veo API returned no video results (likely blocked by safety filters or an internal error).")
 
         generated = operation.result.generated_videos[0]
         clip_path.parent.mkdir(parents=True, exist_ok=True)

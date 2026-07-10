@@ -1,0 +1,7 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/friday-500814/shorts-pipeline:latest', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/friday-500814/shorts-pipeline:latest']
+images:
+  - 'gcr.io/friday-500814/shorts-pipeline:latest'

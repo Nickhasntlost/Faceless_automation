@@ -45,6 +45,8 @@ class PipelineConfig:
     scene_count_min: int
     scene_count_max: int
     clip_duration_seconds: int
+    target_video_duration_min: int
+    target_video_duration_max: int
     video_resolution: str
     aspect_ratio: str
     budget_threshold_usd: float

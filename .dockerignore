@@ -1,0 +1,13 @@
+.env
+*.json.bak
+__pycache__
+*.pyc
+.git
+output/
+data/budget_counter.json
+credentials/
+friday-500814-*.json
+*.mp4
+*.png
+*.jpg
+node_modules

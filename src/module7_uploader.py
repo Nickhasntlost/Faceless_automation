@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from src.models import PipelineConfig, ScriptPackage
@@ -9,24 +10,69 @@ from src.utils.api_client import with_timeout
 logger = logging.getLogger("shorts_pipeline.uploader")
 
 
+def _is_headless() -> bool:
+    # K_SERVICE is set for Cloud Run *services*; CLOUD_RUN_JOB is set for Cloud Run *jobs*
+    # (this pipeline runs as a job). Check both so headless detection works either way.
+    return bool(os.environ.get("K_SERVICE") or os.environ.get("CLOUD_RUN_JOB"))
+
+AFFILIATE_BLOCK = """
+
+🔧 AI Tools I Recommend:
+→ ElevenLabs (AI Voice Generator): https://try.elevenlabs.io/7fjxiwv5cgj9
+
+#AITech #Psychology #ArtificialIntelligence #TechShorts #AIExplained #FutureOfAI #MindAndMachine"""
+
+
+def _build_description(script: ScriptPackage) -> str:
+    base = script.description or ""
+    psychology = f"\n\n🧠 Psychology concept: {script.psychology_hook}" if getattr(script, "psychology_hook", None) else ""
+    trigger = f"\n\n{script.comment_trigger}" if getattr(script, "comment_trigger", None) else ""
+    full = base + psychology + trigger + AFFILIATE_BLOCK
+    return full[:5000]
+
+
 def _get_youtube_service(client_secrets: Path, token_path: Path):
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 
     scopes = ["https://www.googleapis.com/auth/youtube.upload"]
+    headless = _is_headless()
+
     creds = None
     if token_path.exists():
         creds = Credentials.from_authorized_user_file(str(token_path), scopes)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+                token_path.write_text(creds.to_json(), encoding="utf-8")
+            except Exception as e:
+                logger.warning(f"Token refresh failed ({e}).")
+                creds = None
+                if headless:
+                    raise RuntimeError(
+                        "YouTube OAuth token refresh failed and no interactive login is "
+                        "possible in this headless environment. Re-authenticate locally "
+                        "and update the YOUTUBE_TOKEN_JSON secret."
+                    ) from e
+                if token_path.exists():
+                    token_path.unlink()
+
+        if not creds or not creds.valid:
+            if headless:
+                raise RuntimeError(
+                    "No valid YouTube OAuth credentials and interactive login is not "
+                    "available in this headless environment. Re-authenticate locally "
+                    "and update the YOUTUBE_TOKEN_JSON secret."
+                )
+            from google_auth_oauthlib.flow import InstalledAppFlow
+
             flow = InstalledAppFlow.from_client_secrets_file(str(client_secrets), scopes)
             creds = flow.run_local_server(port=0)
-        token_path.parent.mkdir(parents=True, exist_ok=True)
-        token_path.write_text(creds.to_json(), encoding="utf-8")
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+            token_path.write_text(creds.to_json(), encoding="utf-8")
+
     return build("youtube", "v3", credentials=creds)
 
 
@@ -44,23 +90,21 @@ def upload_video(
 
     client_secrets = credentials_dir / "client_secrets.json"
     token_path = credentials_dir / "token.json"
-    if not client_secrets.exists():
+    headless = _is_headless()
+    if not headless and not client_secrets.exists():
         return None, f"Missing OAuth client secrets at {client_secrets}"
+    if headless and not token_path.exists():
+        return None, f"Missing YouTube OAuth token at {token_path} (headless mode cannot do interactive login)"
 
     @with_timeout(max(pipeline_config.api_timeout_seconds, 300), "youtube_upload")
     def _upload() -> str:
         youtube = _get_youtube_service(client_secrets, token_path)
-        # Build description with psychology hook and comment trigger
-        description = script.description
-        if hasattr(script, 'psychology_hook') and script.psychology_hook:
-            description = f"{description}\n\n🧠 Psychology concept: {script.psychology_hook}"
-        if hasattr(script, 'comment_trigger') and script.comment_trigger:
-            description = f"{description}\n\n{script.comment_trigger}"
+        description = _build_description(script)
 
         body = {
             "snippet": {
                 "title": script.title[:100],
-                "description": description[:5000],
+                "description": description,
                 "tags": script.tags[:500],
                 "categoryId": pipeline_config.youtube_category_id,
             },

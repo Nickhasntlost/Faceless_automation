@@ -113,15 +113,17 @@ def build_ass_subtitles(timings: list[WordTiming], ass_path: Path) -> None:
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Word,Arial Black,56,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,1,0,0,0,100,100,0,0,1,4,0,2,40,40,120,1",
+        "Style: Word,Arial Black,56,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,1,0,0,0,100,100,0,0,4,4,0,2,40,40,120,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
-    for timing in timings:
-        start = _seconds_to_ass_time(timing.start_seconds)
-        end = _seconds_to_ass_time(max(timing.end_seconds, timing.start_seconds + 0.08))
-        text = timing.word.upper()
+    words_per_phrase = 3
+    for i in range(0, len(timings), words_per_phrase):
+        chunk = timings[i:i + words_per_phrase]
+        start = _seconds_to_ass_time(chunk[0].start_seconds)
+        end = _seconds_to_ass_time(max(chunk[-1].end_seconds, chunk[0].start_seconds + 0.08))
+        text = " ".join(t.word.upper() for t in chunk)
         lines.append(f"Dialogue: 0,{start},{end},Word,,0,0,0,,{text}")
     ass_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -131,6 +133,41 @@ def _run_ffmpeg(cmd: list[str]) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "ffmpeg failed")
+
+
+def _get_duration(path: Path) -> float:
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(path)
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+def _check_final_duration(video_path: str, config: dict) -> tuple[bool, str]:
+    """Verify final video meets duration targets."""
+    result = subprocess.run([
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(video_path)
+    ], capture_output=True, text=True)
+    
+    duration = float(result.stdout.strip())
+    min_dur = config.get("target_video_duration_min", 18)
+    max_dur = config.get("target_video_duration_max", 30)
+    
+    if duration < min_dur:
+        return False, f"Video too short: {duration:.1f}s (minimum {min_dur}s)"
+    if duration > max_dur:
+        return False, f"Video too long: {duration:.1f}s (maximum {max_dur}s)"
+    
+    return True, f"Duration OK: {duration:.1f}s"
 
 
 def concat_clips(clip_paths: list[Path], output_path: Path) -> None:
@@ -173,6 +210,7 @@ def mix_narration(video_path: Path, audio_path: Path, output_path: Path) -> None
             "copy",
             "-c:a",
             "aac",
+            "-shortest",
             str(output_path),
         ]
     )
@@ -236,6 +274,7 @@ def assemble_final_video(
     script: ScriptPackage,
     assembly_dir: Path,
     verification_dir: Path,
+    config: dict,
     mock_audio: bool = False,
 ) -> tuple[Path, bool, str]:
     assembly_dir.mkdir(parents=True, exist_ok=True)
@@ -332,6 +371,18 @@ def assemble_final_video(
     sample_time = voice.timings[0].start_seconds if voice.timings else 0.5
     frame_path = verification_dir / "caption_check.jpg"
     extract_frame(final_path, sample_time, frame_path)
-    ok, detail = verify_captions_in_frame(frame_path, first_word)
+    caps_ok, detail = verify_captions_in_frame(frame_path, first_word)
     logger.info("Caption verification: %s", detail)
-    return final_path, ok, detail
+    
+    video_dur = _get_duration(final_path)
+    audio_path_to_check = padded_audio_path if padded_audio_path.exists() else voice.audio_path
+    if audio_path_to_check.exists() and audio_path_to_check.read_bytes() != b"MOCK_MP3":
+        audio_dur = _get_duration(audio_path_to_check)
+        if abs(video_dur - audio_dur) > 0.5:
+            return final_path, False, f"Audio/video duration mismatch exceeds 0.5s: video={video_dur:.1f}s, audio={audio_dur:.1f}s"
+            
+    ok, dur_detail = _check_final_duration(str(final_path), config)
+    if not ok:
+        return final_path, False, dur_detail
+        
+    return final_path, caps_ok, f"{detail} | {dur_detail}"

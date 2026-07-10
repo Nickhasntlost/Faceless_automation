@@ -23,6 +23,7 @@ from src.module5_assembly import assemble_final_video
 from src.module6_thumbnail import generate_thumbnail
 from src.module7_uploader import upload_video
 from src.module8_quality_gate import QualityGate
+from src.module9_drive import upload_run_outputs
 from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger("shorts_pipeline.orchestrator")
@@ -138,7 +139,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
         # triple-hook scenes, visual_prompts, loop_type, and comment_trigger.
         # No need for timestamp_planner → retention_director → storyboard_generator
         # → scene_planner → visual_prompt_builder chain — the prompt handles it upstream.
-        script = generate_script(plan, identity, pricing.script_model_id, mock=mock, deterministic=simulation.deterministic)
+        script = generate_script(plan, identity, pricing.script_model_id, mock=mock, deterministic=simulation.deterministic, pipeline_config=pipeline_config.__dict__)
         
         full_narration = script.full_narration
         warnings = list(script.validation_warnings)
@@ -290,6 +291,7 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             script,
             paths.assembly_dir,
             paths.verification_dir,
+            pipeline_config.__dict__,
             mock_audio=mock,
         ) if not simulation.dry_run else (paths.assembly_dir / "dry_run_final.mp4", True, "Captions skipped in dry run")
         paths.final_video_path = final_video
@@ -298,7 +300,10 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             gate.mark_stage_complete("captions")
             gate.note(caption_detail)
         else:
-            gate.degrade("captions", caption_detail)
+            if "too short" in caption_detail or "too long" in caption_detail or "mismatch" in caption_detail:
+                gate.degrade("duration", caption_detail)
+            else:
+                gate.degrade("captions", caption_detail)
 
         thumb_path, thumb_error, thumb_skipped = generate_thumbnail(
             script,
@@ -321,6 +326,8 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
 
         if simulation.skip_upload or mock or simulation.dry_run:
             gate.note("Upload skipped (mock mode or --skip-upload or --dry-run)")
+        elif not captions_ok and ("too short" in caption_detail or "too long" in caption_detail or "mismatch" in caption_detail):
+            gate.note("Upload skipped — video duration outside target range. Review manually before publishing.")
         else:
             video_id, upload_error = upload_video(
                 script,
@@ -335,6 +342,14 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             else:
                 gate.mark_stage_complete("youtube_upload")
                 gate.note(f"Uploaded video id={video_id} with containsSyntheticMedia=true")
+
+                drive_links = upload_run_outputs(
+                    run_id=run_id,
+                    video_path=final_video,
+                    report_path=paths.quality_report_path,
+                )
+                if drive_links.get("video_link"):
+                    gate.note(f"Drive backup: {drive_links['video_link']}")
 
         gate.note("=== Pipeline Cost Report ===")
         for k, v in gate.cost_breakdown.items():
