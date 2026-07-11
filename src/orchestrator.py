@@ -33,6 +33,16 @@ _BLOCKING_DEGRADATIONS = (
     "video file missing",
     "all scenes failed",
     "0 scenes generated",
+    "video too short: 0.",
+    "video too short: 1.",
+    "video too short: 2.",
+    "video too short: 3.",
+    "video too short: 4.",
+    "video too short: 5.",
+    "video too short: 6.",
+    "video too short: 7.",
+    "video too short: 8.",
+    "video too short: 9.",
 )
 
 
@@ -47,7 +57,7 @@ def _should_upload(gate: QualityGate) -> tuple[bool, str]:
         return False, "Pipeline failed"
     if report.verdict == "PASS":
         return True, "Clean run"
-    # REVIEW — check whether any degradation is actually blocking
+    # REVIEW — only block on genuinely unplayable output
     blocking = [
         d.get("reason", "") for d in (report.degradations or [])
         if any(k in d.get("reason", "").lower() for k in _BLOCKING_DEGRADATIONS)

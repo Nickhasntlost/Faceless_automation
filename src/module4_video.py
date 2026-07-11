@@ -94,7 +94,14 @@ def _generate_single_clip(
             project=os.environ["GOOGLE_CLOUD_PROJECT"],
             location=os.environ.get("VERTEX_LOCATION", "us-central1")
         )
-        logger.info("Calling Veo API for scene %d with duration_seconds=%d", scene.index, pipeline_config.clip_duration_seconds)
+        logger.info(
+            "Veo config: duration_seconds=%d aspect_ratio=%s resolution=%s (scene %d)",
+            pipeline_config.clip_duration_seconds,
+            pipeline_config.aspect_ratio,
+            pipeline_config.video_resolution,
+            scene.index,
+        )
+
         operation = client.models.generate_videos(
             model=pricing.veo_model_id,
             prompt=_augment_veo_prompt(scene.visual_prompt, scene.index, total_scenes),
