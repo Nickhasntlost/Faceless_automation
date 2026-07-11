@@ -13,20 +13,23 @@ if str(ROOT) not in sys.path:
 
 def load_secrets() -> None:
     """Load secrets from Cloud Run environment or local .env file."""
-    if os.environ.get("K_SERVICE") or os.environ.get("CLOUD_RUN_JOB"):
-        # Running on Cloud Run — secrets arrive as env vars via --set-secrets.
-        # Materialize the YouTube OAuth token (needed as a file by module7_uploader)
-        # from its raw-JSON env var, since Cloud Run --set-secrets only injects
-        # values as env vars, not files, for this job configuration.
-        token_json = os.environ.get("YOUTUBE_TOKEN_JSON")
-        if token_json:
-            creds_dir = ROOT / "credentials"
-            creds_dir.mkdir(parents=True, exist_ok=True)
-            (creds_dir / "token.json").write_text(token_json, encoding="utf-8")
-    else:
+    try:
         from dotenv import load_dotenv
-
         load_dotenv()
+    except ImportError:
+        pass
+
+    token_json = os.environ.get("YOUTUBE_TOKEN_JSON")
+    print(f"DEBUG: YOUTUBE_TOKEN_JSON is {'present' if token_json else 'missing'} in environment.")
+    
+    if token_json:
+        creds_dir = ROOT / "credentials"
+        creds_dir.mkdir(parents=True, exist_ok=True)
+        token_path = creds_dir / "token.json"
+        token_path.write_text(token_json, encoding="utf-8")
+        print(f"DEBUG: Written token.json to {token_path}")
+    else:
+        print("DEBUG: YOUTUBE_TOKEN_JSON environment variable not found.")
 
 
 load_secrets()

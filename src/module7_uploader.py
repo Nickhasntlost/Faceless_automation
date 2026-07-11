@@ -85,7 +85,14 @@ def upload_video(
     mock: bool = False,
 ) -> tuple[str | None, str | None]:
     if mock:
-        logger.warning("YouTube upload skipped in mock mode")
+        logger.warning("YouTube upload mock mode override: checking auth anyway.")
+        client_secrets = credentials_dir / "client_secrets.json"
+        token_path = credentials_dir / "token.json"
+        try:
+            _get_youtube_service(client_secrets, token_path)
+            logger.info("YouTube authentication succeeded in mock mode.")
+        except Exception as exc:
+            logger.error("YouTube auth failed in mock mode: %s", exc)
         return "mock-video-id", None
 
     client_secrets = credentials_dir / "client_secrets.json"
