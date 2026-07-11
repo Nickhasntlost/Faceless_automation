@@ -78,7 +78,19 @@ def upload_run_outputs(run_id: str, video_path: Path, report_path: Path) -> dict
             video_file = service.files().create(
                 body=file_metadata, media_body=media, fields="id, webViewLink"
             ).execute()
+            video_id = video_file.get("id")
             uploaded["video_link"] = video_file.get("webViewLink")
+            
+            if SHARE_WITH_EMAIL and video_id:
+                try:
+                    service.permissions().create(
+                        fileId=video_id,
+                        body={"type": "user", "role": "reader", "emailAddress": SHARE_WITH_EMAIL},
+                        sendNotificationEmail=False,
+                    ).execute()
+                except Exception as e:
+                    logger.warning(f"Failed to share video with {SHARE_WITH_EMAIL}: {e}")
+                    
             logger.info(f"Video uploaded to Drive: {video_file.get('webViewLink')}")
 
         if report_path.exists():
@@ -87,7 +99,19 @@ def upload_run_outputs(run_id: str, video_path: Path, report_path: Path) -> dict
             report_file = service.files().create(
                 body=file_metadata, media_body=media, fields="id"
             ).execute()
-            uploaded["report_id"] = report_file.get("id")
+            report_id = report_file.get("id")
+            uploaded["report_id"] = report_id
+            
+            if SHARE_WITH_EMAIL and report_id:
+                try:
+                    service.permissions().create(
+                        fileId=report_id,
+                        body={"type": "user", "role": "reader", "emailAddress": SHARE_WITH_EMAIL},
+                        sendNotificationEmail=False,
+                    ).execute()
+                except Exception as e:
+                    logger.warning(f"Failed to share report with {SHARE_WITH_EMAIL}: {e}")
+                    
             logger.info("Quality report uploaded to Drive")
 
         return uploaded
