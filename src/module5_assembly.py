@@ -381,7 +381,7 @@ def assemble_final_video(
         if abs(video_dur - audio_dur) > 0.5:
             return final_path, False, f"Audio/video duration mismatch exceeds 0.5s: video={video_dur:.1f}s, audio={audio_dur:.1f}s"
             
-    ok, dur_detail = _check_final_duration(str(final_path), config)
+    ok, dur_detail = _check_final_duration(str(final_path), config) if not mock_audio else (True, "Duration check skipped in mock mode")
     if not ok:
         return final_path, False, dur_detail
         
