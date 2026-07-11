@@ -338,18 +338,17 @@ def _parse_script_payload(payload: dict, identity: ChannelIdentity) -> ScriptPac
 
 
 def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage:
-    topic = plan.topic.rstrip('.?!')
     color_palette = "deep navy and electric cyan"
     scenes = [
         Scene(
             index=1,
             hook_type="primary",
             emotional_beat="hook",
-            narration="ChatGPT just passed the Turing test.",
+            narration="Is AI making you less creative?",
             visual_prompt=(
                 f"minimalist vector art, {color_palette} color palette, "
                 f"clean motion graphics, vertical portrait orientation, "
-                f"cartoon robot facing a human silhouette across a table, slow zoom in "
+                f"cartoon person looking at glowing screen with question mark above head, slow zoom in "
                 f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
@@ -357,11 +356,11 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             index=2,
             hook_type="tension",
             emotional_beat="tension",
-            narration="Every major lab knew this was coming.",
+            narration="Every AI tool promises to help you think better.",
             visual_prompt=(
                 f"minimalist vector art, {color_palette} color palette, "
                 f"clean motion graphics, vertical portrait orientation, "
-                f"boardroom of cartoon scientists looking at glowing screens, pan left "
+                f"floating brain with electric sparks and gears turning, pan left "
                 f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
@@ -369,67 +368,43 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
             index=3,
             hook_type="secondary",
             emotional_beat="surprise",
-            narration="But here's what nobody talks about.",
+            narration="But cognitive offloading says the opposite happens.",
             visual_prompt=(
                 f"minimalist vector art, {color_palette} color palette, "
                 f"clean motion graphics, vertical portrait orientation, "
-                f"cartoon brain with question marks floating around it, quick push in "
+                f"cartoon brain shrinking as robot arm takes over tasks, wide shot "
                 f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
         Scene(
             index=4,
-            hook_type="proof",
-            emotional_beat="proof",
-            narration="Anthropomorphism makes you trust it anyway.",
-            visual_prompt=(
-                f"minimalist vector art, {color_palette} color palette, "
-                f"clean motion graphics, vertical portrait orientation, "
-                f"cartoon human shaking hands with robot, warm glow effect, static wide "
-                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
-            ),
-        ),
-        Scene(
-            index=5,
-            hook_type="tertiary",
-            emotional_beat="stakes",
-            narration="And that reflex? Companies are exploiting it.",
-            visual_prompt=(
-                f"minimalist vector art, {color_palette} color palette, "
-                f"clean motion graphics, vertical portrait orientation, "
-                f"corporate building with robot logo, shadowy figures inside, slow zoom out "
-                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
-            ),
-        ),
-        Scene(
-            index=6,
             hook_type="payoff",
             emotional_beat="payoff",
-            narration="So next time AI feels human — that's not magic. That's anthropomorphism. Are you okay with that?",
+            narration="The less you think, the less you can. Are you outsourcing your mind?",
             visual_prompt=(
                 f"minimalist vector art, {color_palette} color palette, "
                 f"clean motion graphics, vertical portrait orientation, "
-                f"same cartoon robot from scene 1 now smiling warmly at viewer, slow zoom in "
+                f"same cartoon person from scene 1 now staring blankly at screen, slow zoom out "
                 f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
             ),
         ),
     ]
     full_narration = " ".join(s.narration for s in scenes)
-    hashtags = getattr(identity, 'default_hashtags', []) or []
+    hashtags = getattr(identity, "default_hashtags", []) or []
 
     return ScriptPackage(
-        title="ChatGPT Passed the Turing Test — Your Brain Already Knew",
-        description="Your brain's anthropomorphism reflex makes you trust AI more than you should. #AI #Psychology #Shorts",
-        tags=hashtags + ["#Psychology", "#Anthropomorphism"],
-        hook="ChatGPT just passed the Turing test.",
-        body="Anthropomorphism makes you trust it anyway.",
-        loop_ending="So next time AI feels human — that's not magic. That's anthropomorphism.",
+        title="Is AI Making You Dumber?",
+        description="The psychology of cognitive offloading — and what it means for your mind.",
+        tags=hashtags + ["#Psychology", "#CognitiveOffloading"],
+        hook="Is AI making you less creative?",
+        body="But cognitive offloading says the opposite happens.",
+        loop_ending="Are you outsourcing your mind?",
         scenes=scenes,
         full_narration=full_narration,
         color_palette=color_palette,
         loop_type="question",
-        comment_trigger="Are you okay with that? Comment below.",
-        psychology_hook="Anthropomorphism — we instinctively attribute human traits to non-human things, making us trust AI that mimics human behavior.",
+        comment_trigger="Are you outsourcing your mind? Tell me below.",
+        psychology_hook="Cognitive offloading — the tendency to rely on external tools instead of internal memory, reducing mental capacity over time.",
     )
 
 

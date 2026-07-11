@@ -136,12 +136,17 @@ def _generate_single_clip(
             estimated_cost_usd=projected,
         )
     except Exception as exc:
-        logger.error("Scene %d generation failed: %s", scene.index, exc)
+        import traceback
+        logger.error(
+            "Scene %d generation failed: %s: %s",
+            scene.index, type(exc).__name__, exc,
+        )
+        logger.debug("Full traceback:\n%s", traceback.format_exc())
         return SceneClipResult(
             scene_index=scene.index,
             clip_path=None,
             success=False,
-            error=str(exc),
+            error=f"{type(exc).__name__}: {exc}",
             estimated_cost_usd=0.0,
         )
 

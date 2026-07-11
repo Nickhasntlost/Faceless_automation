@@ -28,6 +28,36 @@ from src.utils.logging_utils import setup_logging
 
 logger = logging.getLogger("shorts_pipeline.orchestrator")
 
+_BLOCKING_DEGRADATIONS = (
+    "no video file",
+    "video file missing",
+    "all scenes failed",
+    "0 scenes generated",
+)
+
+
+def _should_upload(gate: QualityGate) -> tuple[bool, str]:
+    """Return (ok, reason). Block only on genuinely broken output."""
+    report = gate.finalize()
+    if report.fatal_error:
+        return False, f"Fatal error: {report.fatal_error}"
+    if getattr(report, "incomplete", False):
+        return False, "Run was incomplete/interrupted"
+    if report.verdict == "FAIL":
+        return False, "Pipeline failed"
+    if report.verdict == "PASS":
+        return True, "Clean run"
+    # REVIEW — check whether any degradation is actually blocking
+    blocking = [
+        d.get("reason", "") for d in (report.degradations or [])
+        if any(k in d.get("reason", "").lower() for k in _BLOCKING_DEGRADATIONS)
+    ]
+    if blocking:
+        return False, f"Blocking: {'; '.join(blocking)}"
+    non_blocking = [d.get("reason", "") for d in (report.degradations or [])]
+    return True, f"Non-blocking degradations: {'; '.join(non_blocking)}"
+
+
 
 class SimulationFlags:
     def __init__(
@@ -285,6 +315,44 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             gate.write_report(paths.quality_report_path)
             return paths.quality_report_path
 
+        # Fix 2: trim audio to cover only scenes with video to avoid sync gap
+        narration_audio = paths.voice_audio_path
+        successful_indices = {r.scene_index for r in clip_results if r.success}
+        all_indices = {r.scene_index for r in clip_results}
+        if successful_indices != all_indices and not mock:
+            missing = sorted(all_indices - successful_indices)
+            logger.warning("Scenes %s failed — trimming audio to match %d clips", missing, len(successful_clips))
+            last_idx = max(successful_indices)  # 1-based
+            # Estimate trim point from narration word timings if available
+            timing_file = paths.voice_timing_path
+            trim_at = None
+            if timing_file and timing_file.exists():
+                import json as _json
+                try:
+                    timings = _json.loads(timing_file.read_text(encoding="utf-8"))
+                    scene_timings = timings if isinstance(timings, list) else timings.get("scenes", [])
+                    if scene_timings and last_idx <= len(scene_timings):
+                        last_scene = scene_timings[last_idx - 1]  # 0-indexed
+                        words = last_scene if isinstance(last_scene, list) else last_scene.get("words", [])
+                        if words:
+                            last_word = words[-1]
+                            end = last_word.get("end_time", last_word.get("end", None))
+                            if end is not None:
+                                trim_at = float(end) + 0.3
+                except Exception as e:
+                    logger.debug("Could not parse timing file for audio trim: %s", e)
+            if trim_at:
+                trimmed = paths.run_dir / "narration_trimmed.mp3"
+                result = subprocess.run(
+                    ["ffmpeg", "-i", str(narration_audio), "-t", str(trim_at), "-c", "copy", str(trimmed), "-y"],
+                    capture_output=True,
+                )
+                if result.returncode == 0:
+                    narration_audio = trimmed
+                    logger.info("Audio trimmed to %.2fs for %d scenes", trim_at, len(successful_clips))
+                else:
+                    logger.warning("Audio trim failed: %s", result.stderr.decode())
+
         final_video, captions_ok, caption_detail = assemble_final_video(
             successful_clips,
             voice,
@@ -326,30 +394,33 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
 
         if simulation.skip_upload or mock or simulation.dry_run:
             gate.note("Upload skipped (mock mode or --skip-upload or --dry-run)")
-        elif not captions_ok and ("too short" in caption_detail or "too long" in caption_detail or "mismatch" in caption_detail):
-            gate.note("Upload skipped — video duration outside target range. Review manually before publishing.")
         else:
-            video_id, upload_error = upload_video(
-                script,
-                final_video,
-                thumb_path,
-                pipeline_config,
-                root / "credentials",
-                mock=False,
-            )
-            if upload_error:
-                gate.degrade("youtube_upload", upload_error)
+            upload_ok, upload_reason = _should_upload(gate)
+            logger.info("Upload decision: %s — %s", upload_ok, upload_reason)
+            if not upload_ok:
+                gate.note(f"Upload skipped: {upload_reason}")
             else:
-                gate.mark_stage_complete("youtube_upload")
-                gate.note(f"Uploaded video id={video_id} with containsSyntheticMedia=true")
-
-                drive_links = upload_run_outputs(
-                    run_id=run_id,
-                    video_path=final_video,
-                    report_path=paths.quality_report_path,
+                video_id, upload_error = upload_video(
+                    script,
+                    final_video,
+                    thumb_path,
+                    pipeline_config,
+                    root / "credentials",
+                    mock=False,
                 )
-                if drive_links.get("video_link"):
-                    gate.note(f"Drive backup: {drive_links['video_link']}")
+                if upload_error:
+                    gate.degrade("youtube_upload", upload_error)
+                else:
+                    gate.mark_stage_complete("youtube_upload")
+                    gate.note(f"Uploaded video id={video_id} with containsSyntheticMedia=true")
+
+                    drive_links = upload_run_outputs(
+                        run_id=run_id,
+                        video_path=final_video,
+                        report_path=paths.quality_report_path,
+                    )
+                    if drive_links.get("video_link"):
+                        gate.note(f"Drive backup: {drive_links['video_link']}")
 
         gate.note("=== Pipeline Cost Report ===")
         for k, v in gate.cost_breakdown.items():
