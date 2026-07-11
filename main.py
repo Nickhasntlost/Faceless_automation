@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 def load_secrets() -> None:
     """Load secrets from Cloud Run environment or local .env file."""
-    if os.environ.get("K_SERVICE"):
+    if os.environ.get("K_SERVICE") or os.environ.get("CLOUD_RUN_JOB"):
         # Running on Cloud Run — secrets arrive as env vars via --set-secrets.
         # Materialize the YouTube OAuth token (needed as a file by module7_uploader)
         # from its raw-JSON env var, since Cloud Run --set-secrets only injects
