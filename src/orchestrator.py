@@ -196,7 +196,6 @@ def run_pipeline(root: Path, simulation: SimulationFlags, topic: str = None, mod
             "hook": script.hook,
             "body": script.body,
             "loop_ending": script.loop_ending,
-            "color_palette": script.color_palette,
             "loop_type": script.loop_type,
             "comment_trigger": script.comment_trigger,
             "psychology_hook": script.psychology_hook,

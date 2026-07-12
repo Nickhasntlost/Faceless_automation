@@ -43,20 +43,27 @@ def _validate_script(scenes: list, script_data: dict, config: dict) -> tuple[lis
             errors.append(f"Scene 1 hook is {hook_words} words — max is 5 (strict)")
     
     # HARD: per-scene word count
+    # Scene 1 = hook, second-to-last scene = tiny explanation (needs more room),
+    # last scene = emotional ending, everything else = story moment.
     for scene in scenes:
-        limit = 18 if scene.index == len(scenes) else 13
         if scene.index == 1:
             limit = 7
+        elif scene.index == len(scenes) - 1:
+            limit = 25  # tiny explanation scene
+        elif scene.index == len(scenes):
+            limit = 18  # emotional ending
+        else:
+            limit = 13  # story moment
         words = len(scene.narration.split())
         if words > limit:
             errors.append(f"Scene {scene.index}: {words} words exceeds {limit} word hard limit")
-    
+
     # HARD: total word budget
     total_words = sum(len(s.narration.split()) for s in scenes)
     if total_words < 40:
-        errors.append(f"Total word count {total_words} is too low — minimum 40 words (target 50-65)")
-    if total_words > 70:
-        errors.append(f"Total word count {total_words} exceeds 70 — video will be too long. Target 50-65 words.")
+        errors.append(f"Total word count {total_words} is too low — minimum 40 words (target 50-70)")
+    if total_words > 75:
+        errors.append(f"Total word count {total_words} exceeds 75 — video will be too long. Target 50-70 words.")
     
     # HARD: required fields
     if not script_data.get("comment_trigger"):
@@ -80,6 +87,48 @@ def _validate_script(scenes: list, script_data: dict, config: dict) -> tuple[lis
         if scene_3 and scene_3.hook_type not in ["secondary", "tension"]:
             warnings.append("Scene 3 should be secondary hook or tension for optimal retention")
     
+    # WARNING: emotional progression — explanation must arrive last, not mid-story
+    psych_terms = ["heuristic", "bias", "effect", "syndrome", "psychology",
+                   "psychologists", "cognitive", "research", "studies"]
+
+    scene_3 = next((s for s in scenes if s.index == 3), None)
+    if scene_3:
+        if any(term in scene_3.narration.lower() for term in psych_terms):
+            warnings.append("Scene 3 contains psychology explanation — explanation should appear in Scene 4 only. Keep Scene 3 as pure storytelling.")
+
+    scene_2 = next((s for s in scenes if s.index == 2), None)
+    if scene_2:
+        if any(term in scene_2.narration.lower() for term in psych_terms):
+            warnings.append("Scene 2 should be pure storytelling — no psychology terms yet")
+
+    # WARNING: ending too weak
+    if scenes:
+        last_scene = scenes[-1]
+        weak_endings = ["think about that", "pretty interesting", "pretty amazing",
+                        "worth protecting", "worth considering", "what do you think"]
+        if any(w in last_scene.narration.lower() for w in weak_endings):
+            warnings.append("Ending is too generic — needs a specific haunting image or unanswered question that connects back to the opening story moment")
+
+    # WARNING: check for performance anti-patterns
+    for scene in scenes:
+        narration = scene.narration
+
+        # Bad: starts with a fact/noun (not a performance hook)
+        first_word = narration.split()[0].lower() if narration else ""
+        boring_starters = ["ai", "the", "this", "research", "studies", "humans", "people", "when", "because"]
+        if first_word in boring_starters:
+            warnings.append(f"Scene {scene.index}: starts with '{first_word}' — consider opening with a performance hook instead")
+
+        # Bad: no short sentence (all sentences similar length)
+        sentences = [s.strip() for s in re.split(r'[.!?]+', narration) if s.strip()]
+        short_sentences = [s for s in sentences if len(s.split()) <= 5]
+        if len(sentences) > 1 and not short_sentences:
+            warnings.append(f"Scene {scene.index}: no short punchy sentences — vary sentence length for better delivery")
+
+        # Bad: missing performance note
+        if not getattr(scene, 'performance_note', ''):
+            warnings.append(f"Scene {scene.index}: missing performance_note — narrator needs delivery guidance")
+
     return errors, warnings
 
 
@@ -158,6 +207,27 @@ HOOK 1 — PRIMARY (Scene 1, 0-2 seconds):
   * "[Number] seconds. That's how long before [scary outcome]."
 - NEVER start with: "Hey", "Welcome", "Today", "In this video", "Let me tell you"
 
+STRONGER HOOK TEMPLATES (prefer these over generic questions):
+
+IMMEDIATE MENTAL IMAGE:
+"What if AI made you forget your grandmother?"
+"Your grandmother told you stories. AI might erase them."
+
+PERSONAL PROVOCATION:
+"AI might be replacing something you can't get back."
+"Something is quietly disappearing from your family. And you don't know it yet."
+
+SPECIFIC SCENARIO:
+"Imagine asking AI for advice... instead of calling your dad."
+"What happens when Google becomes more familiar than your parents' voices?"
+
+AVOID:
+Generic questions like "Is AI stealing something from your family?"
+(good but safe — push for more specific/visual hooks)
+
+The strongest hooks create an IMMEDIATE mental image in the first 2 seconds.
+The viewer should picture something specific, not think about an abstract concept.
+
 HOOK 2 — SECONDARY (Scene 3, 10-15 seconds into video):
 - Re-engages viewers who are considering swiping after the opening.
 - Introduces a NEW angle or unexpected fact they didn't see coming.
@@ -188,12 +258,18 @@ COMMENT TRIGGER (drives engagement signal)
 The VERY LAST LINE of narration (after payoff) must be a comment trigger.
 This is a direct question or polarizing statement that makes the viewer feel compelled to respond.
 
-Proven comment triggers — use one per video:
-- Binary choice: "Was this the right move? Comment YES or NO."
-- Polarizing take: "Honestly, this might be the most dangerous thing in tech right now."
-- Personal relevance: "Does your job use AI yet? Tell me below."
-- Challenge: "Bet you didn't know that. Prove me wrong."
-- Prediction: "This will be everywhere by next year. Or it won't. What do you think?"
+COMMENT TRIGGER RULE:
+The comment trigger must flow NATURALLY from the emotional ending.
+It should feel like the narrator is genuinely asking, not prompting engagement.
+
+WRONG: "Is your family's wisdom worth protecting? Tell me below."
+(Generic, preachy, disconnected from the story)
+
+RIGHT: "Will you remember her face... or just the AI's answer? Tell me."
+(Specific, haunting, directly connected to the story's emotional core)
+
+The comment trigger should reference something SPECIFIC from the story,
+not a generic concept.
 
 NEVER use: "Like and subscribe", "Follow for more", "Hit the bell" — these tank retention.
 
@@ -210,12 +286,13 @@ Both are acceptable. Choose based on how much the topic needs.
 Simple topics = 4 scenes. Complex topics = 5 scenes.
 
 WORD BUDGET:
-- Total script: 50-65 words across ALL scenes combined
-- At 150 WPM, 50 words = 20 seconds, 65 words = 26 seconds
+- Total script: 50-70 words across ALL scenes combined
+- At 150 WPM, 50 words = 20 seconds, 70 words = 28 seconds
 - This is the ONLY way to hit the 21-28 second target
-- Scene 1 (hook): max 5 words (WE WILL COUNT THEM AND FAIL IF MORE)
-- Scenes 2-4: max 10 words each
-- Scene 5 (payoff, if used): max 15 words including comment trigger
+- Scene 1 (hook): max 7 words (WE WILL COUNT THEM AND FAIL IF MORE)
+- Scenes 2-3 (story moments): max 13 words each
+- Scene 4 (tiny explanation): max 22 words — this scene carries the concept, give it room
+- Scene 5 (emotional ending, if used): max 18 words including comment trigger
 
 SPEAKING PACE TARGET: 150-170 words per minute
 - Write short, punchy sentences that naturally speak fast
@@ -229,29 +306,309 @@ TIMING CHECK (do this before outputting JSON):
 4. Never pad with filler words to hit a minimum
 5. Never cut important content to hit a maximum — restructure instead
 
-SCENE STRUCTURE FOR 4 SCENES:
-Scene 1 — PRIMARY HOOK (max 5 words, question)
-Scene 2 — TENSION + SECONDARY HOOK (max 10 words)
-Scene 3 — PROOF + PSYCHOLOGY CONCEPT (max 10 words)
-Scene 4 — PAYOFF + COMMENT TRIGGER (max 15 words)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SCENE STRUCTURE — FEEL FIRST, UNDERSTAND SECOND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-SCENE STRUCTURE FOR 5 SCENES:
-Scene 1 — PRIMARY HOOK (max 5 words, question)
-Scene 2 — TENSION (max 10 words)
-Scene 3 — SECONDARY HOOK / TWIST (max 10 words)
-Scene 4 — PROOF + PSYCHOLOGY CONCEPT (max 10 words)
-Scene 5 — PAYOFF + COMMENT TRIGGER (max 15 words)
+MANDATORY STRUCTURE FOR 5 SCENES:
+
+Scene 1 — HOOK (emotional question or shocking statement)
+  - Must create personal stakes immediately
+  - Never start with a fact or statistic
+  - Must make the viewer feel "this is about ME"
+  - Max 7 words
+
+Scene 2 — STORY MOMENT 1 (pure storytelling, zero explanation)
+  - Paint a specific, human picture
+  - Use "Imagine this." or "Picture this." to open
+  - No psychology terms, no AI jargon
+  - The viewer must see a human moment, not a concept
+  - Example: "Your grandmother tells a story. Nobody writes it down.
+    Years later... it's gone."
+
+Scene 3 — STORY MOMENT 2 (escalate the emotion, still no explanation)
+  - Build on scene 2, increase emotional stakes
+  - Something unexpected or slightly painful
+  - Still no explanation — keep them feeling, not thinking
+  - Use contrast: what they expect vs what actually happens
+  - Example: "The story disappears. Then the details disappear.
+    Then... the sound of her voice."
+
+Scene 4 — TINY EXPLANATION (name the concept AFTER they feel it)
+  - This is where the psychology concept finally appears
+  - But SHOW it first, then NAME it
+  - WRONG: "That's the availability heuristic."
+  - RIGHT: "The more you ask AI... the easier its answers become
+    to remember. Your grandmother's stories don't get repeated.
+    Psychologists call this the availability heuristic."
+  - The concept must feel like a DISCOVERY, not a lecture
+  - Max 2 sentences of explanation
+
+Scene 4 — TINY EXPLANATION (revised delivery pattern)
+
+NEVER say "Psychologists call this X" as a standalone sentence.
+Always build to the concept name with hesitation and suspense:
+
+WRONG:
+"Psychologists call this the availability heuristic."
+
+RIGHT (delayed reveal):
+"You don't forget because you wanted to."
+"You forget... because your brain keeps choosing what it sees most often."
+"Psychologists actually have a name for this..."
+"It's called... the availability heuristic."
+
+The concept name should feel like a REVEAL, not a label.
+The "..." before the concept name is mandatory — it creates the micro-pause
+that makes the naming feel like a discovery.
+
+Pattern to follow:
+[Why it happens in human terms]
+→ [What the brain is doing]
+→ "Psychologists actually have a name for this..."
+→ "It's called... [CONCEPT NAME]."
+
+Scene 5 — EMOTIONAL ENDING (leave a scar, not a lesson)
+  - Do NOT summarize what you just said
+  - Do NOT use "Think about that" — too weak
+  - Leave an image or question that haunts them
+  - Must connect back to the human moment from Scene 2
+  - Examples of strong endings:
+    "One day... the last person who remembers that story will be gone.
+     What happens then?"
+    "You'll remember the AI's answer. Will you remember her face?"
+    "The story is still there. Is it in your head... or just in the cloud?"
+  - End with a question that has no easy answer
+
+For 4-scene scripts, compress Scene 2 and Scene 3 above into a single
+STORY scene, then follow with the TINY EXPLANATION and EMOTIONAL ENDING
+scenes as described.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EMOTIONAL PROGRESSION RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RULE 1 — EARN YOUR EMOTION
+Emotional claims must be built to, not stated.
+WRONG: "AI doesn't just replace the story. It replaces HER."
+  (Too fast — not earned yet)
+RIGHT: Build through scenes 2 and 3 until the viewer feels the loss.
+  Then in scene 3: "AI starts becoming easier to remember...
+  than the people who taught you."
+  (Same message, but now it lands because they feel it first)
+
+RULE 2 — SHOW THEN NAME
+Never introduce a psychology concept cold.
+Always show the concept in human terms first, then name it.
+Pattern: [Human experience] → [What it means] → [Name of concept]
+Never: [Name of concept] → [What it means] → [Human experience]
+
+RULE 3 — SOFTEN STRONG CLAIMS
+Rhetorical claims that sound like facts create distrust.
+WRONG: "AI replaces HER." (stated as fact)
+RIGHT: "AI starts becoming easier to remember than the people
+who taught you." (concern/observation)
+Keep emotional impact. Reduce factual overstatement.
+
+RULE 4 — THE ENDING MUST LEAVE A SCAR
+The last line of the video is the most remembered.
+It should create a lingering image or unanswered question.
+Test: if someone could only remember ONE line from your video,
+would this be worth remembering?
+If no — rewrite it.
+
+RULE 5 — NO TED TALK MOMENTS
+The moment you hear "That's the availability heuristic" in isolation,
+the viewer switches from feeling to thinking.
+Never let a scene feel like a psychology textbook entry.
+The explanation must be woven into the story, not dropped on top of it.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PERFORMANCE SCRIPT RULES (most important section)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You are NOT writing sentences. You are writing SPOKEN MOMENTS.
+Every line must implicitly tell the narrator how to deliver it.
+The goal: sound like someone telling an exciting story to a friend,
+not reading an article aloud.
+
+RULE 1 — NEVER LET A THOUGHT DIE
+Bad: "AI has changed how families remember stories."
+     [thought dies, silence, next sentence starts]
+
+Good: "AI has changed how families remember stories..."
+      "...and nobody warned you it was happening."
+
+The "..." means the thought CONTINUES. The narrator bridges to
+the next line instead of stopping. Use "..." between connected
+thoughts to create run-on momentum.
+
+RULE 2 — VARY SENTENCE ENERGY DELIBERATELY
+Every scene must have a different energy level:
+- Short punchy line = HIGH energy (reader speeds up naturally)
+- "But then..." = PAUSE + anticipation
+- "Nobody noticed." = LOW, quiet, almost whispered
+- "Until NOW." = SPIKE, emphasis
+- "Think about that." = SLOW DOWN, let it land
+
+Never write 3 sentences in a row at the same energy level.
+Energy pattern should look like: HIGH → low → HIGH HIGH → pause → SPIKE
+
+RULE 3 — WRITE DISCOVERY MOMENTS, NOT EXPLANATIONS
+Bad: "The availability heuristic makes you overestimate AI reliability."
+[explains immediately, no tension]
+
+Good: "But here's the strange part..."
+      "The more you use AI..."
+      "The MORE you trust it."
+      "Even when it's wrong."
+
+The good version creates tension BEFORE the explanation.
+The viewer leans in because they don't have the answer yet.
+
+RULE 4 — USE THESE PERFORMANCE STRUCTURES (rotate through them)
+
+SETUP → PAUSE → REVEAL:
+"Something happened in 2023."
+"Nobody talked about it."
+"But it changed everything."
+
+HYPOTHETICAL MOMENT:
+"Imagine this."
+"Your grandmother tells a story."
+"Nobody writes it down."
+"Years later... it's gone."
+
+CALLBACK QUESTION:
+"Remember what I said about [X]?"
+"That's exactly what's happening here."
+
+WHISPER MOMENT (short, heavy):
+"That's the part they don't mention."
+or
+"Nobody tells you this."
+or
+"Think about that."
+
+RUSH MOMENT (fast, no pauses, urgency):
+"It's happening right now. In your phone. In your home. Today."
+
+RULE 5 — SENTENCE LENGTH VARIATION IS MANDATORY
+Every scene must have at least one sentence under 5 words.
+Every scene must have a mix of short and longer sentences.
+
+Examples of good short punchy lines:
+"That's the catch."
+"Nobody warned you."
+"Until it was gone."
+"But here's the thing."
+"Think about that."
+"It already started."
+
+RULE 6 — NEVER START A SCENE WITH A FACT
+Bad scene opening: "The availability heuristic affects memory recall."
+Good scene opening: "Here's what nobody tells you."
+                   "Something strange happens when you use AI daily."
+                   "But wait."
+                   "Imagine this for a second."
+
+Always open a scene with a performance hook, then deliver the fact.
+
+RULE 7 — THE NARRATOR MUST SOUND LIKE THEY'RE DISCOVERING THIS TOO
+Write lines that sound like genuine surprise or realization:
+"And this is where it gets weird."
+"I didn't expect this either."
+"But then something changed."
+"Wait — it gets worse."
+"Here's the part that surprised me."
+
+These lines cost zero extra words but completely change delivery energy.
+
+RULE 8 — SOUND SLIGHTLY IMPERFECT (most human-sounding rule)
+
+Real creators don't tell stories perfectly. They:
+- Interrupt themselves mid-thought
+- Correct themselves
+- Build to a word, then pause before saying it
+- Start a sentence, then change direction
+
+Use these patterns deliberately:
+
+SELF-INTERRUPT:
+"And that's when — actually, wait."
+"But here's the thing — no, here's the REAL thing."
+"I thought it was about memory. It's not. It's about something else."
+
+MID-SENTENCE REDIRECT:
+"The story disappears. Then the details. And then..."
+"First the story goes. Then the little details. And eventually..."
+"You don't forget because you wanted to. You forget because..."
+
+BUILD TO THE WORD:
+"Then... the sound of her voice." (pause BEFORE the emotional word)
+"And eventually... this is the scary part... you can't even remember her voice."
+"Psychologists actually have a name for this... it's called..."
+
+THINKING ALOUD:
+"And this is where it gets strange."
+"I didn't expect this part."
+"Here's what I didn't realize until recently."
+"Actually — this is the part nobody talks about."
+
+These cost zero extra words but completely change how human the delivery sounds.
+TTS naturally pauses at "..." and changes tone at em dashes — use both liberally.
+
+RULE 9 — FRAME AS TENDENCY, NOT CERTAINTY
+
+When making psychological claims, frame them as possibilities or tendencies,
+not established facts. This preserves emotional impact while avoiding overstatement.
+
+WRONG (overstates causality):
+"AI replaces her."
+"AI makes you forget."
+"Using AI destroys family memory."
+
+RIGHT (frames as tendency):
+"AI starts becoming easier to remember than the people who taught you."
+"The stories we revisit are the ones we keep. The ones we don't... fade."
+"If AI becomes your first answer for everything, your own memories get used less."
+
+The emotional impact is identical. The accuracy is higher.
+Avoid: "replaces", "erases", "destroys", "steals" as definitive verbs.
+Use: "starts to replace", "might erase", "can slowly replace", "gets used less".
+
+Every scene's JSON object must include a "performance_note" field describing
+the delivery style for that scene, e.g. "urgent whisper", "fast rush",
+"slow reveal", "shocked reaction", "thoughtful pause", "direct address".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 VISUAL STYLE (minimalist vector art)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Pick ONE color palette at the start. Reference it in every scene.
+There is NO single global color palette. Each scene has its own color mood
+that matches its emotional beat — never repeat the same palette twice.
+
 Every visual_prompt must include:
-- "minimalist vector art, [color palette], clean motion graphics"
+- "minimalist vector art, clean motion graphics"
+- The scene's specific color mood (see PER-SCENE COLOR MOOD below)
 - "vertical portrait orientation"
 - A specific subject relevant to the narration
 - One camera movement (slow zoom in / pan left / static wide / quick push in)
+
+PER-SCENE COLOR MOOD (hard requirement — never the same twice):
+Scene 1 (hook): bright white/clean studio lighting, light background,
+  high contrast — shocking, clean
+Scene 2 (story_1): warm sepia/golden tones, soft amber light,
+  family warmth feeling — human, emotional, nostalgic
+Scene 3 (story_2): muted warm tones fading to grey,
+  desaturated, melancholy — loss, fading, quiet
+Scene 4 (explanation): cool blue-white data visualization feel,
+  clean white background, clinical — analytical, clear
+Scene 5 (emotional_ending): same subject as scene 1 but darker,
+  slightly desaturated — resolution, weight, finality
+
+For 4-scene scripts, use moods 1, 2-or-3 (whichever fits the single story
+scene), 4, and 5 in that order.
 
 VISUAL VARIETY RULE (hard requirement):
 Each scene MUST depict a completely different visual subject.
@@ -259,13 +616,13 @@ No two scenes can show the same object, character, or setting.
 
 Mandatory variety across 5 scenes — use this rotation:
 Scene 1: A PERSON or CHARACTER reacting to something
-Scene 2: A DEVICE or INTERFACE (phone, screen, computer)  
+Scene 2: A DEVICE or INTERFACE (phone, screen, computer)
 Scene 3: A BRAIN or MIND visualization (abstract, symbolic)
 Scene 4: A CROWD or SOCIETY scene (multiple people, social setting)
 Scene 5: Same CHARACTER as Scene 1 but different emotional state (loop)
 
 The visual_prompt for each scene must open with its subject:
-Scene 1: "Cartoon character..." 
+Scene 1: "Cartoon character..."
 Scene 2: "Floating smartphone..."
 Scene 3: "Glowing brain..."
 Scene 4: "Crowd of silhouettes..."
@@ -274,7 +631,7 @@ Scene 5: "Same cartoon character..."
 If two scenes open with the same noun — reject and retry.
 
 Negative prompt on every visual (append to end):
-"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
+"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads, neon, cyan, teal, electric blue, dark navy background, glowing, neon glow"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT FORMAT
@@ -288,7 +645,6 @@ Return ONLY valid JSON:
   "hook": "primary hook, max 6 words, question or shocking statement",
   "body": "one sentence core insight",
   "loop_ending": "final line that loops back to hook",
-  "color_palette": "e.g. deep navy and electric cyan",
   "loop_type": "question|visual|statement",
   "comment_trigger": "the exact comment trigger line used in Scene 6",
   "psychology_hook": "The named psychological phenomenon used in this video and a one-sentence explanation of how it connects to the topic",
@@ -296,9 +652,10 @@ Return ONLY valid JSON:
     {{
       "index": 1,
       "hook_type": "primary|secondary|tertiary|tension|proof|payoff",
+      "performance_note": "delivery style for this scene, e.g. urgent whisper, fast rush, slow reveal, shocked reaction, thoughtful pause, direct address",
       "narration": "max 12 words, ends on strong word",
       "word_count": 0,
-      "visual_prompt": "minimalist vector art, [color_palette], clean motion graphics, vertical portrait orientation, [specific scene], [camera movement] | negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
+      "visual_prompt": "minimalist vector art, [per-scene color mood], clean motion graphics, vertical portrait orientation, [specific scene], [camera movement] | negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads, neon, cyan, teal, electric blue, dark navy background, glowing, neon glow"
     }}
   ]
 }}
@@ -315,6 +672,7 @@ def _parse_script_payload(payload: dict, identity: ChannelIdentity) -> ScriptPac
             visual_prompt=str(item.get("visual_prompt", "")).strip(),
             emotional_beat=str(item.get("hook_type", "")).strip(),
             hook_type=str(item.get("hook_type", "")).strip(),
+            performance_note=str(item.get("performance_note", "")).strip(),
         ))
     scenes.sort(key=lambda s: s.index)
 
@@ -330,62 +688,84 @@ def _parse_script_payload(payload: dict, identity: ChannelIdentity) -> ScriptPac
         loop_ending=str(payload.get("loop_ending", "")).strip(),
         scenes=scenes,
         full_narration=full_narration,
-        color_palette=str(payload.get("color_palette", "")).strip(),
         loop_type=str(payload.get("loop_type", "")).strip(),
         comment_trigger=str(payload.get("comment_trigger", "")).strip(),
         psychology_hook=str(payload.get("psychology_hook", "")).strip(),
     )
 
 
+NEGATIVE_SUFFIX = (
+    "| negative: channel logos, text, typography, words, branding, watermarks, "
+    "photorealistic, live action, talking heads, neon, cyan, teal, electric blue, "
+    "dark navy background, glowing, neon glow"
+)
+
+
 def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage:
-    color_palette = "deep navy and electric cyan"
     scenes = [
         Scene(
             index=1,
             hook_type="primary",
             emotional_beat="hook",
-            narration="Is AI making you less creative?",
+            performance_note="urgent whisper, speeds up",
+            narration="Is AI stealing something from your family?",
             visual_prompt=(
-                f"minimalist vector art, {color_palette} color palette, "
+                f"minimalist vector art, bright white clean studio lighting, light background, high contrast, "
                 f"clean motion graphics, vertical portrait orientation, "
                 f"cartoon person looking at glowing screen with question mark above head, slow zoom in "
-                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
+                f"{NEGATIVE_SUFFIX}"
             ),
         ),
         Scene(
             index=2,
             hook_type="tension",
-            emotional_beat="tension",
-            narration="Every AI tool promises to help you think better.",
+            emotional_beat="story_1",
+            performance_note="slow, human, pause on every line",
+            narration="Imagine this. Your grandmother tells a story. Nobody writes it down. Years later... it's gone.",
             visual_prompt=(
-                f"minimalist vector art, {color_palette} color palette, "
+                f"minimalist vector art, warm sepia and golden tones, soft amber light, nostalgic family warmth, "
                 f"clean motion graphics, vertical portrait orientation, "
-                f"floating brain with electric sparks and gears turning, pan left "
-                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
+                f"grandmother telling a story to a child by lamplight, pan left "
+                f"{NEGATIVE_SUFFIX}"
             ),
         ),
         Scene(
             index=3,
             hook_type="secondary",
-            emotional_beat="surprise",
-            narration="But cognitive offloading says the opposite happens.",
+            emotional_beat="story_2",
+            performance_note="build slowly, get quieter not louder",
+            narration="The story disappears. Then the details disappear. Then... the sound of her voice. One day... you can't remember it anymore.",
             visual_prompt=(
-                f"minimalist vector art, {color_palette} color palette, "
+                f"minimalist vector art, muted warm tones fading to grey, desaturated, melancholy, "
                 f"clean motion graphics, vertical portrait orientation, "
                 f"cartoon brain shrinking as robot arm takes over tasks, wide shot "
-                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
+                f"{NEGATIVE_SUFFIX}"
             ),
         ),
         Scene(
             index=4,
-            hook_type="payoff",
-            emotional_beat="payoff",
-            narration="The less you think, the less you can. Are you outsourcing your mind?",
+            hook_type="proof",
+            emotional_beat="explanation",
+            performance_note="matter-of-fact, like a discovery not a lecture",
+            narration="The more you ask AI... the easier its answers become to remember. Her stories don't get repeated. Psychologists call this the availability heuristic.",
             visual_prompt=(
-                f"minimalist vector art, {color_palette} color palette, "
+                f"minimalist vector art, cool blue-white data visualization feel, clean white background, clinical, "
+                f"clean motion graphics, vertical portrait orientation, "
+                f"crowd of silhouettes scrolling on phones under a fading memory, static wide "
+                f"{NEGATIVE_SUFFIX}"
+            ),
+        ),
+        Scene(
+            index=5,
+            hook_type="payoff",
+            emotional_beat="emotional_ending",
+            performance_note="slow, haunting, leave space after last word",
+            narration="One day... the last person who remembers that story will be gone. Will you remember her face... or just the AI's answer?",
+            visual_prompt=(
+                f"minimalist vector art, bright white studio lighting but darker and slightly desaturated, weighty resolution, "
                 f"clean motion graphics, vertical portrait orientation, "
                 f"same cartoon person from scene 1 now staring blankly at screen, slow zoom out "
-                f"| negative: channel logos, text, typography, words, branding, watermarks, photorealistic, live action, talking heads"
+                f"{NEGATIVE_SUFFIX}"
             ),
         ),
     ]
@@ -393,18 +773,17 @@ def _mock_script(plan: CreativePlan, identity: ChannelIdentity) -> ScriptPackage
     hashtags = getattr(identity, "default_hashtags", []) or []
 
     return ScriptPackage(
-        title="Is AI Making You Dumber?",
-        description="The psychology of cognitive offloading — and what it means for your mind.",
-        tags=hashtags + ["#Psychology", "#CognitiveOffloading"],
-        hook="Is AI making you less creative?",
-        body="But cognitive offloading says the opposite happens.",
-        loop_ending="Are you outsourcing your mind?",
+        title="Is AI Stealing Your Family's Memories?",
+        description="The psychology of the availability heuristic — and what it means for your family's stories.",
+        tags=hashtags + ["#Psychology", "#AvailabilityHeuristic"],
+        hook="Is AI stealing something from your family?",
+        body="Psychologists call this the availability heuristic.",
+        loop_ending="Will you remember her face... or just the AI's answer?",
         scenes=scenes,
         full_narration=full_narration,
-        color_palette=color_palette,
         loop_type="question",
-        comment_trigger="Are you outsourcing your mind? Tell me below.",
-        psychology_hook="Cognitive offloading — the tendency to rely on external tools instead of internal memory, reducing mental capacity over time.",
+        comment_trigger="Will you remember her face... or just the AI's answer? Tell me.",
+        psychology_hook="Availability heuristic — judging likelihood by how easily examples come to mind, making AI-stored memories feel more \"real\" than the ones fading from your own mind.",
     )
 
 

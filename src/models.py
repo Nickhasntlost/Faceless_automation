@@ -115,6 +115,7 @@ class Scene:
     visual_prompt: str
     emotional_beat: str = ""
     hook_type: str = ""
+    performance_note: str = ""
 
 
 @dataclass
@@ -127,7 +128,6 @@ class ScriptPackage:
     loop_ending: str
     scenes: list[Scene]
     full_narration: str
-    color_palette: str = ""
     loop_type: str = ""
     comment_trigger: str = ""
     psychology_hook: str = ""
