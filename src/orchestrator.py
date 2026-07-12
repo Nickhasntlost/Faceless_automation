@@ -59,12 +59,12 @@ def _should_upload(gate: QualityGate) -> tuple[bool, str]:
         return True, "Clean run"
     # REVIEW — only block on genuinely unplayable output
     blocking = [
-        d.get("reason", "") for d in (report.degradations or [])
-        if any(k in d.get("reason", "").lower() for k in _BLOCKING_DEGRADATIONS)
+        d.reason for d in (report.degradations or [])
+        if any(k in d.reason.lower() for k in _BLOCKING_DEGRADATIONS)
     ]
     if blocking:
         return False, f"Blocking: {'; '.join(blocking)}"
-    non_blocking = [d.get("reason", "") for d in (report.degradations or [])]
+    non_blocking = [d.reason for d in (report.degradations or [])]
     return True, f"Non-blocking degradations: {'; '.join(non_blocking)}"
 
 
