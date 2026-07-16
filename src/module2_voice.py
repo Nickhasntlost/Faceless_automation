@@ -344,7 +344,51 @@ def synthesize_voice(
             estimated_cost_usd=projected_cost,
         )
 
-    result = _call_tts()
+    @with_timeout(pipeline_config.api_timeout_seconds, "google_tts")
+    def _call_google_tts() -> VoiceResult:
+        import os
+        from google.cloud import texttospeech_v1beta1 as texttospeech
+
+        ssml, clean_words = _build_ssml(raw_text, pause_requests=pause_requests)
+        _verify_ssml(ssml)
+
+        client = texttospeech.TextToSpeechClient()
+        voice_name = os.environ.get("GOOGLE_TTS_VOICE", pipeline_config.tts_voice_name)
+        request = texttospeech.SynthesizeSpeechRequest(
+            input=texttospeech.SynthesisInput(ssml=ssml),
+            voice=texttospeech.VoiceSelectionParams(
+                language_code=pipeline_config.tts_language_code,
+                name=voice_name,
+            ),
+            audio_config=texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+            ),
+            enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK],
+        )
+        response = client.synthesize_speech(request=request)
+
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(response.audio_content)
+
+        audio_duration = _estimate_mp3_duration_seconds(audio_path)
+        marks = [(tp.mark_name, tp.time_seconds) for tp in response.timepoints]
+        timings = _timings_from_marks(clean_words, marks, audio_duration)
+
+        return VoiceResult(
+            audio_path=audio_path,
+            timings=timings,
+            character_count=character_count,
+            estimated_cost_usd=budget.estimate_tts_cost(character_count),
+        )
+
+    provider = "elevenlabs_tts"
+    try:
+        result = _call_tts()
+    except Exception as exc:
+        logger.warning("ElevenLabs TTS failed (%s); falling back to Google TTS", exc)
+        result = _call_google_tts()
+        provider = "google_tts"
+
     mark_count = len(result.timings)
     words = _tokenize_words(raw_text)
     if mark_count < max(1, len(words) // 2):
@@ -352,8 +396,8 @@ def synthesize_voice(
             f"TTS timing verification failed: expected ~{len(words)} word marks, got {mark_count}"
         )
     budget.record_spend(
-        projected_cost,
-        "elevenlabs_tts",
+        result.estimated_cost_usd,
+        provider,
         metadata={"characters": character_count, "word_count": len(words), "mark_count": mark_count},
     )
     write_json(
@@ -366,7 +410,8 @@ def synthesize_voice(
         },
     )
     logger.info(
-        "Voice synthesized: %d words, %d marks, %.2fs span",
+        "Voice synthesized via %s: %d words, %d marks, %.2fs span",
+        provider,
         len(words),
         mark_count,
         result.timings[-1].end_seconds if result.timings else 0.0,

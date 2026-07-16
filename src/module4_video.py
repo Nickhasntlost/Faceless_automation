@@ -20,7 +20,7 @@ def _mock_clip(scene_index: int, clip_path: Path, duration: int) -> None:
         "-f",
         "lavfi",
         "-i",
-        f"color=c=0x101820:s=1080x1920:d={duration}",
+        f"color=c=0x101820:s=720x1280:d={duration}",
         "-f",
         "lavfi",
         "-i",
@@ -40,7 +40,7 @@ def _mock_clip(scene_index: int, clip_path: Path, duration: int) -> None:
 def _augment_veo_prompt(visual_prompt: str, scene_index: int, total_scenes: int) -> str:
     """Enforce style consistency and technical requirements on every Veo prompt."""
     style_anchor = "minimalist vector art, clean motion graphics"
-    technical = "vertical portrait orientation, 1080p, smooth motion"
+    technical = "vertical portrait orientation, 720p, smooth motion"
 
     if "| negative:" in visual_prompt:
         positive, negative = visual_prompt.split("| negative:", 1)
