@@ -13,9 +13,6 @@ MIN_DURATION_SECONDS = 15.0
 MAX_DURATION_SECONDS = 33.0
 WORDS_PER_SECOND = 2.5
 
-# Per-scene word limits (index 1-6)
-SCENE_WORD_LIMITS = {1: 6, 2: 12, 3: 12, 4: 12, 5: 10, 6: 15}
-
 
 def estimate_spoken_duration(text: str) -> float:
     words = re.findall(r"""\b[\w']+\b""", text)
@@ -139,8 +136,10 @@ def _build_prompt(plan: CreativePlan, identity: ChannelIdentity) -> str:
 
     content_angles = json.dumps(getattr(identity, 'content_angles', []))
 
-    return f'''You are an expert viral YouTube Shorts scriptwriter for an AI/Tech × Psychology channel.
-Your benchmark: The Infographics Show. Your goal: 65%+ retention, maximum comments.
+    return f'''You are a short-form storyteller. You make viewers feel a human moment in under 30 seconds.
+The psychology is always the twist — never the subject.
+Your benchmark: emotional micro-fiction. Think: the moment before a realization, not the realization itself.
+Your goal: the viewer feels something before they understand anything. 65%+ retention through emotion, not information.
 
 CHANNEL IDENTITY:
 - Niche: {identity.niche}
@@ -181,7 +180,7 @@ NAMED PSYCHOLOGICAL PHENOMENA TO USE (rotate through these):
 - Anthropomorphism: attributing human characteristics to non-human things
 
 CONTENT ANGLE FORMULA:
-"[AI/Tech fact] + [Named psychological effect] = [Personal insight about the viewer]"
+"[Human moment the viewer has lived] + [The thing happening underneath it] + [The name for it — revealed last]"
 
 Example scripts:
 - "ChatGPT just passed the Turing test. Your brain's anthropomorphism reflex already knew."
@@ -333,16 +332,6 @@ Scene 3 — STORY MOMENT 2 (escalate the emotion, still no explanation)
   - Use contrast: what they expect vs what actually happens
   - Example: "The story disappears. Then the details disappear.
     Then... the sound of her voice."
-
-Scene 4 — TINY EXPLANATION (name the concept AFTER they feel it)
-  - This is where the psychology concept finally appears
-  - But SHOW it first, then NAME it
-  - WRONG: "That's the availability heuristic."
-  - RIGHT: "The more you ask AI... the easier its answers become
-    to remember. Your grandmother's stories don't get repeated.
-    Psychologists call this the availability heuristic."
-  - The concept must feel like a DISCOVERY, not a lecture
-  - Max 2 sentences of explanation
 
 Scene 4 — TINY EXPLANATION (revised delivery pattern)
 
