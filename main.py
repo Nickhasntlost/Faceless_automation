@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -9,6 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+logger = logging.getLogger("shorts_pipeline.main")
 
 
 def load_secrets() -> None:
@@ -20,16 +23,16 @@ def load_secrets() -> None:
         pass
 
     token_json = os.environ.get("YOUTUBE_TOKEN_JSON")
-    print(f"DEBUG: YOUTUBE_TOKEN_JSON is {'present' if token_json else 'missing'} in environment.")
-    
+    logger.debug("YOUTUBE_TOKEN_JSON is %s in environment.", "present" if token_json else "missing")
+
     if token_json:
         creds_dir = ROOT / "credentials"
         creds_dir.mkdir(parents=True, exist_ok=True)
         token_path = creds_dir / "token.json"
         token_path.write_text(token_json, encoding="utf-8")
-        print(f"DEBUG: Written token.json to {token_path}")
+        logger.debug("Wrote token.json to %s", token_path)
     else:
-        print("DEBUG: YOUTUBE_TOKEN_JSON environment variable not found.")
+        logger.debug("YOUTUBE_TOKEN_JSON environment variable not found.")
 
 
 load_secrets()
